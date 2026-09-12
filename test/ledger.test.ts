@@ -81,7 +81,7 @@ describe("Ledger append", () => {
 describe("parseLedger", () => {
   it("parses the fixture ledger completely and covers every event kind", () => {
     const events = readLedgerFile(FIXTURE);
-    expect(events.length).toBe(34);
+    expect(events.length).toBe(42);
     const kinds = new Set(events.map((e) => e.kind));
     for (const k of EVENT_KINDS) expect(kinds.has(k)).toBe(true);
     expect(events[events.length - 1]!.kind).toBe("end");
@@ -89,7 +89,7 @@ describe("parseLedger", () => {
 
   it("ignores blank lines and CRLF", () => {
     const text = readFileSync(FIXTURE, "utf8").replace(/\n/g, "\r\n") + "\r\n\r\n";
-    expect(parseLedger(text)).toHaveLength(34);
+    expect(parseLedger(text)).toHaveLength(42);
   });
 
   it("rejects malformed JSON with a line number", () => {

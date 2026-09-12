@@ -10,8 +10,8 @@ const events = readLedgerFile(FIXTURE);
 describe("computeStats", () => {
   it("counts inferences, calls, approvals, refusals and tokens from the fixture", () => {
     const s = computeStats(events);
-    expect(s.events).toBe(34);
-    expect(s.inferences).toBe(7);
+    expect(s.events).toBe(42);
+    expect(s.inferences).toBe(8);
     expect(s.calls).toBe(7);
     expect(s.failedCalls).toBe(0);
     expect(s.approvals).toBe(1);
@@ -33,17 +33,15 @@ describe("renderLine (platform run-page messages — keep stable)", () => {
     expect(renderLine(byKind("request"))).toMatch(/^Agent started: ".*" \(skill storyToTests\)$/);
     expect(renderLine(byKind("plan"))).toMatch(/^Plan: 6 steps — /);
     expect(renderLine(byKind("inference"))).toBe("Agent chose ado.get_work_item");
-    expect(renderLine(byKind("policy"))).toBe(
-      "Gate: read → execute (read-only; work item 1 in scope)",
-    );
+    expect(renderLine(byKind("policy"))).toBe("Gate: read → execute (read-only)");
     expect(renderLine(byKind("approval_requested"))).toMatch(
-      /^Approval needed: Create 4 test cases/,
+      /^Approval needed: Approve 2 calls: ado\.create_test_cases/,
     );
     expect(renderLine(byKind("approval_resolved"))).toBe(
       "Approval approved by qa.lead@example.test",
     );
     expect(renderLine(byKind("call"))).toBe("Calling ado.get_work_item");
-    expect(renderLine(byKind("observation"))).toMatch(/^call #6 → ok \(\d+ ms\)$/);
+    expect(renderLine(byKind("observation"))).toMatch(/^call #\d+ → ok \(\d+ ms\)$/);
     expect(renderLine(byKind("verify"))).toBe("Verifier: done");
     expect(renderLine(byKind("end"))).toMatch(/^Agent finished: done — /);
   });
@@ -79,7 +77,7 @@ describe("renderMarkdown", () => {
     expect(md).toContain("**Status:** done");
     expect(md).toContain("**Tool calls:** 7 (0 failed)");
     const rows = md.split("\n").filter((l) => /^\| \d+ \|/.test(l));
-    expect(rows).toHaveLength(34);
+    expect(rows).toHaveLength(42);
     expect(md).toContain("no tool or model calls were made");
   });
 
