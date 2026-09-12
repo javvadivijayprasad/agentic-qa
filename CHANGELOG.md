@@ -52,3 +52,29 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
 - Fixture regenerated: scenario now uses `ScopedGate`; reasons carry scope notes
   (e.g. "read-only; work item 1 in scope"). Still 42 events, no shape change.
 - Tests: 85.
+
+### Added (A4 — real MCP client, config, discovery)
+- `src/config.ts`: `loadAgentConfig` (JSON or YAML `ai-quality.config.yaml`, PLAN §0 schema,
+  defaults + clear `ConfigError`s), `loadDotEnv` (never overrides existing env), `readRuntimeEnv`
+  (ANTHROPIC_API_KEY, AZURE_DEVOPS_ORG_URL/PAT/PROJECT, AQA_MODEL, AQA_SANDBOX, TCG_URL,
+  AI_GOVERNANCE_URL, SYNTHDATA_CMD).
+- `src/mcp/client.ts`: `McpToolClient` over `@modelcontextprotocol/sdk` (stdio transport, one
+  session per server, lazy connect, `listTools` → qualified `ToolDescriptor`s classified via the
+  manifest, `callTool` → normalised `{ok,result,artefacts}`, errors never throw), `CompositeTools`
+  to merge MCP servers with in-process adapters. SDK imported lazily so tests need no network.
+- `src/mcp/manifest.ts`: governance manifest (qualified tool → policy class + scopeArgs). Unknown
+  tools are `destructive` → refused. Only `fs.*` is filled in; `ado.*`/`playwright.*` are added in
+  A5 from `docs/tools-observed.md`, not from memory.
+- `src/mcp/servers.ts`: specs for Microsoft's `@azure-devops/mcp` (PAT via env, never argv) and
+  `@playwright/mcp --headless`; versions from `AQA_ADO_MCP_VERSION` / `AQA_PLAYWRIGHT_MCP_VERSION`
+  or `latest` until pinned after discovery. `npx.cmd` on Windows.
+- `src/mcp/adapters/fs.ts`: workspace-bounded `fs.read_file` / `fs.list_dir` / `fs.write_file`
+  (path-escape refused).
+- `aqa discover [--servers ado,playwright,fs] [--out docs/tools-observed.md] [--env .env]
+  [--workspace .]`: connects, lists tools, writes a Markdown + JSON report of real names, schemas
+  and classification status, closes servers.
+- `aqa run "<request>" --config <file> --dry-run`: loads config + env, connects, prints each tool
+  as `class → decision`, makes no model or tool calls. Non-dry-run exits 1 until A7.
+- `examples/ai-quality.config.yaml`: the sandbox config (work item 1, `agent/*` branches).
+- Dependencies: `@modelcontextprotocol/sdk`, `yaml`.
+- Tests: 113.

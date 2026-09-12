@@ -1,60 +1,90 @@
-import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { readLedgerFile, LEDGER_FILE } from "./ledger/ledger.js";
 import { renderMarkdown } from "./ledger/replay.js";
+import { ConfigError, loadAgentConfig, loadDotEnv, readRuntimeEnv } from "./config.js";
+import { CompositeTools, McpToolClient, type ServerSpec } from "./mcp/client.js";
+import { buildReport, renderReportMarkdown } from "./mcp/discover.js";
+import { DEFAULT_MANIFEST } from "./mcp/manifest.js";
+import { azureDevOpsServer, playwrightServer } from "./mcp/servers.js";
+import { FsTools } from "./mcp/adapters/fs.js";
+import { ScopedGate } from "./governance/policy.js";
+import { mask } from "./governance/scrub.js";
+import type { ToolClient } from "./runtime/tools.js";
+
+export const VERSION = "0.1.0-dev.0";
 
 const USAGE = `aqa — agentic QA runtime
 
 Usage:
-  aqa replay <path> [--out <file>]     Render a ledger to Markdown (no network, no tools).
-                                       <path> is a run dir, a ledger root (uses the latest run),
-                                       or an events.jsonl file.
-  aqa run "<request>" [...]            (not implemented yet — arrives in step A2+)
-  aqa --version | -v
-  aqa --help | -h
+  aqa replay <path> [--out <file>]
+      Render a ledger to Markdown (no network, no tools). <path> is a run dir, a ledger
+      root (uses the latest run), or an events.jsonl file.
+
+  aqa discover [--servers ado,playwright,fs] [--out docs/tools-observed.md] [--workspace .]
+      Spawn the MCP servers, list their tools, and write the observed names + schemas.
+      Reads .env for credentials. Makes NO tool calls — listTools() only.
+
+  aqa run "<request>" --config <ai-quality.config.yaml> [--ledger .aqa]
+          [--approval terminal|file] [--dry-run] [--servers ...] [--workspace .]
+      --dry-run: load config, connect servers, list tools with their gate class, exit 0.
+      Without --dry-run: not implemented yet (model adapter arrives in A7).
+
+  aqa --version | -v      aqa --help | -h
 `;
 
-export async function main(argv: string[]): Promise<number> {
-  const [cmd, ...rest] = argv;
-  if (!cmd || cmd === "--help" || cmd === "-h") {
-    process.stdout.write(USAGE);
-    return 0;
-  }
-  if (cmd === "--version" || cmd === "-v") {
-    process.stdout.write(`${VERSION}\n`);
-    return 0;
-  }
-  if (cmd === "replay") return replay(rest);
-  if (cmd === "run") {
-    process.stderr.write("aqa run is not implemented yet (step A2+). Use `aqa replay` for now.\n");
-    return 1;
-  }
-  process.stderr.write(`Unknown command: ${cmd}\n\n${USAGE}`);
-  return 1;
+export interface CliIo {
+  out: (s: string) => void;
+  err: (s: string) => void;
 }
 
-function replay(args: string[]): number {
-  const target = args.find((a) => !a.startsWith("--"));
-  if (!target) {
-    process.stderr.write("aqa replay: missing <path>\n");
+export async function main(argv: string[], io: CliIo = stdio()): Promise<number> {
+  const [cmd, ...rest] = argv;
+  try {
+    if (!cmd || cmd === "--help" || cmd === "-h") return (io.out(USAGE), 0);
+    if (cmd === "--version" || cmd === "-v") return (io.out(`${VERSION}\n`), 0);
+    if (cmd === "replay") return replay(rest, io);
+    if (cmd === "discover") return await discover(rest, io);
+    if (cmd === "run") return await run(rest, io);
+    io.err(`Unknown command: ${cmd}\n\n${USAGE}`);
+    return 1;
+  } catch (e) {
+    if (e instanceof ConfigError) {
+      io.err(`aqa: config error: ${e.message}\n`);
+      return 1;
+    }
+    io.err(`aqa: ${(e as Error).message}\n`);
     return 1;
   }
-  const outIdx = args.indexOf("--out");
-  const out = outIdx >= 0 ? args[outIdx + 1] : undefined;
+}
 
+function stdio(): CliIo {
+  return {
+    out: (s) => {
+      process.stdout.write(s);
+    },
+    err: (s) => {
+      process.stderr.write(s);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// replay
+// ---------------------------------------------------------------------------
+
+function replay(args: string[], io: CliIo): number {
+  const target = positional(args)[0];
+  if (!target) return (io.err("aqa replay: missing <path>\n"), 1);
+  const out = flag(args, "--out");
   const file = resolveLedgerFile(resolve(target));
-  if (!file) {
-    process.stderr.write(`aqa replay: no ${LEDGER_FILE} found under ${target}\n`);
-    return 1;
-  }
+  if (!file) return (io.err(`aqa replay: no ${LEDGER_FILE} found under ${target}\n`), 1);
   const events = readLedgerFile(file);
   const md = renderMarkdown(events);
   if (out && out !== "-") {
     if (out !== "/dev/null" && out !== "NUL") writeFileSync(out, md, "utf8");
-    process.stderr.write(`aqa replay: ${events.length} events from ${file}\n`);
-  } else {
-    process.stdout.write(md);
-  }
+    io.err(`aqa replay: ${events.length} events from ${file}\n`);
+  } else io.out(md);
   return 0;
 }
 
@@ -75,7 +105,151 @@ export function resolveLedgerFile(path: string): string | undefined {
   return undefined;
 }
 
-export const VERSION = "0.1.0-dev.0";
+// ---------------------------------------------------------------------------
+// discover / run --dry-run
+// ---------------------------------------------------------------------------
+
+export interface ToolingDeps {
+  /** Override for tests: build the tool client instead of spawning servers. */
+  buildTools?: (
+    specs: ServerSpec[],
+    workspace: string,
+  ) => Promise<{ tools: ToolClient; close: () => Promise<void> }>;
+}
+
+async function buildTooling(
+  args: string[],
+  io: CliIo,
+  deps: ToolingDeps,
+): Promise<{
+  specs: ServerSpec[];
+  tools: ToolClient;
+  close: () => Promise<void>;
+  workspace: string;
+}> {
+  loadDotEnv(flag(args, "--env") ?? ".env");
+  const env = readRuntimeEnv(process.env, { requireAnthropic: false });
+  const workspace = resolve(flag(args, "--workspace") ?? ".");
+  const wanted = (flag(args, "--servers") ?? "ado,playwright,fs")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const specs: ServerSpec[] = [];
+  for (const w of wanted) {
+    if (w === "ado") {
+      if (!env.azureDevOps)
+        throw new ConfigError(
+          "--servers includes ado but AZURE_DEVOPS_ORG_URL/PAT/PROJECT are not set",
+        );
+      specs.push(azureDevOpsServer(env));
+    } else if (w === "playwright") specs.push(playwrightServer());
+    else if (w !== "fs")
+      throw new ConfigError(`unknown server "${w}" (known: ado, playwright, fs)`);
+  }
+  if (env.azureDevOps)
+    io.err(
+      `aqa: Azure DevOps org ${env.azureDevOps.org}, project ${env.azureDevOps.project}, PAT ${mask(env.azureDevOps.pat)}\n`,
+    );
+
+  const built = deps.buildTools
+    ? await deps.buildTools(specs, workspace)
+    : await (async () => {
+        const mcp = new McpToolClient(specs, DEFAULT_MANIFEST);
+        const clients: ToolClient[] = specs.length > 0 ? [mcp] : [];
+        if (wanted.includes("fs")) clients.push(new FsTools(workspace));
+        return { tools: new CompositeTools(clients), close: () => mcp.close() };
+      })();
+  return { specs, ...built, workspace };
+}
+
+export async function discover(args: string[], io: CliIo, deps: ToolingDeps = {}): Promise<number> {
+  const out = flag(args, "--out") ?? "docs/tools-observed.md";
+  const { specs, tools, close } = await buildTooling(args, io, deps);
+  try {
+    io.err(`aqa discover: connecting to ${specs.length} MCP server(s)…\n`);
+    const list = await tools.listTools();
+    const report = buildReport(
+      [
+        ...specs,
+        ...(list.some((t) => t.server === "fs")
+          ? [{ name: "fs", command: "(in-process)", args: [] }]
+          : []),
+      ],
+      list,
+      DEFAULT_MANIFEST,
+    );
+    mkdirSync(dirname(resolve(out)), { recursive: true });
+    writeFileSync(out, renderReportMarkdown(report), "utf8");
+    writeFileSync(out.replace(/\.md$/, "") + ".json", JSON.stringify(report, null, 2), "utf8");
+    const unclassified = report.tools.filter((t) => !t.classified).length;
+    io.out(
+      `aqa discover: ${report.tools.length} tools from ${report.servers.length} server(s); ${unclassified} unclassified → ${out}\n`,
+    );
+    for (const t of report.tools) io.out(`  ${t.classified ? " " : "!"} ${t.qualified}\n`);
+    return 0;
+  } finally {
+    await close();
+  }
+}
+
+export async function run(args: string[], io: CliIo, deps: ToolingDeps = {}): Promise<number> {
+  const request = positional(args)[0];
+  if (!request) return (io.err(`aqa run: missing "<request>"\n`), 1);
+  const configPath = flag(args, "--config");
+  if (!configPath) return (io.err("aqa run: --config <ai-quality.config.yaml> is required\n"), 1);
+  const config = await loadAgentConfig(configPath);
+
+  if (!args.includes("--dry-run")) {
+    io.err("aqa run: only --dry-run is implemented so far (model adapter arrives in A7).\n");
+    return 1;
+  }
+  const { tools, close } = await buildTooling(args, io, deps);
+  try {
+    const list = await tools.listTools();
+    const gate = new ScopedGate(config.policy, config.scope, {
+      sandbox: process.env["AQA_SANDBOX"] === "1",
+    });
+    io.out(`aqa run --dry-run: "${request}"\n`);
+    io.out(
+      `  config: model ${config.model}, budgets ${config.budgets.steps} steps / ${config.budgets.tokens} tokens\n`,
+    );
+    io.out(
+      `  scope: work_items ${config.scope.work_items.join(",") || "(none)"}; repos ${config.scope.repos.join(",") || "(none)"}; test_plans ${config.scope.test_plans.join(",") || "(none)"}\n`,
+    );
+    io.out(`  ${list.length} tools visible to the gate (class → table decision):\n`);
+    for (const t of list) {
+      const v = gate.judge({ toolName: `${t.server}.${t.name}`, args: {} }, t);
+      io.out(
+        `    ${t.server}.${t.name}: ${t.policyClass} → ${config.policy[t.policyClass]}${v.decision === "refuse" && t.policyClass !== "destructive" ? " (scope args required)" : ""}\n`,
+      );
+    }
+    io.out("  no model or tool calls were made.\n");
+    return 0;
+  } finally {
+    await close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+function flag(args: string[], name: string): string | undefined {
+  const i = args.indexOf(name);
+  return i >= 0 && i + 1 < args.length ? args[i + 1] : undefined;
+}
+
+function positional(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a.startsWith("--")) {
+      if (a !== "--dry-run") i++; // skip the value of a --flag value pair
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
 
 // Only run when invoked as the CLI entry (tsup banner adds the shebang).
 const isEntry =

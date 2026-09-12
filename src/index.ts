@@ -47,3 +47,28 @@ export { TerminalApprover, FileApprover } from "./runtime/approvers.js";
 export type { FileApproverOptions, FileApprovalRecord } from "./runtime/approvers.js";
 export { scrub, mask, SCRUB_RULES } from "./governance/scrub.js";
 export type { ScrubRule, ScrubResult } from "./governance/scrub.js";
+export {
+  loadAgentConfig,
+  agentConfigFromObject,
+  parseConfigText,
+  loadDotEnv,
+  readRuntimeEnv,
+  orgNameFromUrl,
+  ConfigError,
+  DEFAULT_BUDGETS,
+} from "./config.js";
+export type { RuntimeEnv } from "./config.js";
+export { McpToolClient, CompositeTools, normaliseResult, sdkSessionFactory } from "./mcp/client.js";
+export type {
+  McpSession,
+  McpToolInfo,
+  McpCallResult,
+  ServerSpec,
+  SessionFactory,
+} from "./mcp/client.js";
+export { DEFAULT_MANIFEST, UNCLASSIFIED, classify } from "./mcp/manifest.js";
+export type { Manifest, ManifestEntry } from "./mcp/manifest.js";
+export { azureDevOpsServer, playwrightServer, npxCommand, PINNED_VERSIONS } from "./mcp/servers.js";
+export { FsTools } from "./mcp/adapters/fs.js";
+export { buildReport, renderReportMarkdown } from "./mcp/discover.js";
+export type { DiscoveryReport } from "./mcp/discover.js";

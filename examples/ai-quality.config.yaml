@@ -1,0 +1,19 @@
+# agentic-qa — fleet-wide agent config (PLAN §0). Copy to your repo root as
+# ai-quality.config.yaml and pass with `aqa run ... --config ai-quality.config.yaml`.
+agent:
+  model: claude-sonnet-4-6            # overridden by AQA_MODEL if set
+  prompt_version: aqa-prompt-v0.1.0
+  budgets:
+    steps: 40                         # AQA_STEP_BUDGET overrides
+    tokens: 400000                    # AQA_TOKEN_BUDGET overrides
+  scope:
+    work_items: ["1"]                 # exact ids or ranges: "100-199"
+    repos: []                         # repo names the agent may write to (none for slice 1)
+    test_plans: ["Sandbox Plan"]      # Azure Test Plans the agent may create cases/suites in
+    branches_writable: ["agent/*"]    # glob; protected branches are always destructive → refuse
+  policy:
+    read: execute
+    write_workspace: execute
+    write_branch: ask
+    write_record: ask
+    destructive: refuse
