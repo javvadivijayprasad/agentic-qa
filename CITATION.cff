@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "agentic-qa: an MCP-based agentic QA runtime with a governance gate and replayable ledger"
+authors:
+  - family-names: Javvadi
+    given-names: Vijay Prasad
+    orcid: "https://orcid.org/0009-0004-1192-6906"
+    affiliation: "Independent Researcher, Plainsboro, NJ, USA"
+version: 0.1.0-dev.0
+date-released: 2026-09-12
+license: MIT
+repository-code: "https://github.com/javvadivijayprasad/agentic-qa"

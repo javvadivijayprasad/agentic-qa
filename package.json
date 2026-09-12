@@ -1,0 +1,66 @@
+{
+  "name": "@vijaypjavvadi/agentic-qa",
+  "version": "0.1.0-dev.0",
+  "description": "Standalone agentic QA runtime: a model chooses tools over MCP inside a governance gate; every step is written to a replayable ledger.",
+  "license": "MIT",
+  "author": "Vijay P. Javvadi <jvijayprasad@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/javvadivijayprasad/agentic-qa"
+  },
+  "keywords": [
+    "agentic",
+    "qa",
+    "test-automation",
+    "mcp",
+    "model-context-protocol",
+    "playwright",
+    "azure-devops",
+    "governance"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "aqa": "./dist/cli.js"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "examples/fixture-ledger",
+    "README.md",
+    "LICENSE",
+    "CITATION.cff"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
+    "fixture:emit": "node examples/fixture-ledger/emit.mjs",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.10.0",
+    "@types/node": "^20.14.0",
+    "eslint": "^9.10.0",
+    "prettier": "^3.3.0",
+    "tsup": "^8.2.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.5.0",
+    "vitest": "^2.0.0"
+  }
+}
