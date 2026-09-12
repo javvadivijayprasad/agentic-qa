@@ -1,0 +1,14 @@
+# Normalise line endings to LF everywhere, on every platform.
+# Prettier checks LF, and the golden test compares the fixture ledger byte-for-byte.
+* text=auto eol=lf
+
+# Ledger / fixture files are evidence: never rewrite their bytes.
+*.jsonl -text
+
+# Binaries
+*.png binary
+*.jpg binary
+*.gif binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
