@@ -35,3 +35,15 @@ export type { Clock } from "./runtime/clock.js";
 export { BasicContextBuilder, compactResult, estimateTokens } from "./runtime/context.js";
 export type { ContextBuilder } from "./runtime/context.js";
 export { ScriptedVerifier } from "./verify/scripted.js";
+export {
+  ScopedGate,
+  matchesAny,
+  raise,
+  DESTRUCTIVE_NAME_PATTERNS,
+  PROTECTED_BRANCHES,
+} from "./governance/policy.js";
+export type { ScopedGateOptions } from "./governance/policy.js";
+export { TerminalApprover, FileApprover } from "./runtime/approvers.js";
+export type { FileApproverOptions, FileApprovalRecord } from "./runtime/approvers.js";
+export { scrub, mask, SCRUB_RULES } from "./governance/scrub.js";
+export type { ScrubRule, ScrubResult } from "./governance/scrub.js";

@@ -33,7 +33,9 @@ describe("renderLine (platform run-page messages — keep stable)", () => {
     expect(renderLine(byKind("request"))).toMatch(/^Agent started: ".*" \(skill storyToTests\)$/);
     expect(renderLine(byKind("plan"))).toMatch(/^Plan: 6 steps — /);
     expect(renderLine(byKind("inference"))).toBe("Agent chose ado.get_work_item");
-    expect(renderLine(byKind("policy"))).toBe("Gate: read → execute (read-only)");
+    expect(renderLine(byKind("policy"))).toBe(
+      "Gate: read → execute (read-only; work item 1 in scope)",
+    );
     expect(renderLine(byKind("approval_requested"))).toMatch(
       /^Approval needed: Approve 2 calls: ado\.create_test_cases/,
     );

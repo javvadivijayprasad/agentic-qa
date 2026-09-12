@@ -11,10 +11,22 @@ export interface ToolDescriptor {
   /** JSON schema of the arguments, verbatim from the MCP server (design §6.3). */
   inputSchema: Record<string, unknown>;
   /**
-   * Governance class assigned by the tool manifest (A3 refines this with
-   * argument inspection). A tool with no class is treated as `destructive`.
+   * Governance class assigned by the tool manifest. The gate may raise it
+   * (never lower it) after inspecting arguments — e.g. a branch write to a
+   * protected branch becomes `destructive`.
    */
   policyClass: PolicyClass;
+  /**
+   * Which arguments carry scope-bearing values, so the gate can check them
+   * against the config allow-lists. Keys are scope dimensions, values are
+   * argument names in `inputSchema`.
+   */
+  scopeArgs?: {
+    workItem?: string;
+    repo?: string;
+    testPlan?: string;
+    branch?: string;
+  };
 }
 
 export interface ToolResult {

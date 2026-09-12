@@ -4,7 +4,7 @@
  * asserts the checked-in file equals what this scenario produces.
  */
 import { Ledger } from "../../src/ledger/ledger.js";
-import { TableGate } from "../../src/governance/policy.js";
+import { ScopedGate } from "../../src/governance/policy.js";
 import { ScriptedApprover } from "../../src/runtime/approval.js";
 import { SteppingClock } from "../../src/runtime/clock.js";
 import { runLoop, type LoopResult } from "../../src/runtime/loop.js";
@@ -47,6 +47,7 @@ export function fixtureTools(): StubTools {
         description: "Read a work item with acceptance criteria",
         inputSchema: schema({ id: "number" }),
         policyClass: "read",
+        scopeArgs: { workItem: "id" },
       },
       {
         ok: true,
@@ -70,6 +71,7 @@ export function fixtureTools(): StubTools {
         description: "Read a file from a repository",
         inputSchema: schema({ repo: "string", path: "string" }),
         policyClass: "read",
+        scopeArgs: { repo: "repo" },
       },
       {
         ok: true,
@@ -140,6 +142,7 @@ export function fixtureTools(): StubTools {
         description: "Create test cases in a test plan, linked to a work item",
         inputSchema: schema({ planName: "string", workItemId: "number", cases: "array" }),
         policyClass: "write_record",
+        scopeArgs: { testPlan: "planName", workItem: "workItemId" },
       },
       { ok: true, result: { testCaseIds: [101, 102, 103, 104], suiteId: 7 }, artefacts: [] },
     )
@@ -150,6 +153,7 @@ export function fixtureTools(): StubTools {
         description: "Record a test run with outcomes",
         inputSchema: schema({ planName: "string", outcomes: "object" }),
         policyClass: "write_record",
+        scopeArgs: { testPlan: "planName" },
       },
       { ok: true, result: { runId: 55, results: 4 }, artefacts: [] },
     );
@@ -251,7 +255,7 @@ export async function runFixtureScenario(ledgerRoot: string): Promise<LoopResult
     requestText: FIXTURE_REQUEST,
     model: fixtureModel(),
     tools: fixtureTools(),
-    gate: new TableGate(fixtureConfig.policy),
+    gate: new ScopedGate(fixtureConfig.policy, fixtureConfig.scope),
     approver: new ScriptedApprover([
       { decision: "approved", by: "qa.lead@example.test", at: "2026-09-12T16:01:12Z" },
     ]),

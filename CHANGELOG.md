@@ -38,3 +38,17 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
   `npm run fixture:make`); the golden test asserts byte equality and CI fails on drift.
   Fixture grew from 34 to 42 events (one `context` event per cycle; one `policy` event per call).
 - Tests: 41.
+
+### Added (A3 — gate hardening, approvers, scrub)
+- `ScopedGate` (design §7): class raised for destructive tool names and protected branches
+  (`main`, `master`, `release`, `production`, `prod`); scope allow-list checks on work item, repo,
+  test plan and branch arguments declared via `ToolDescriptor.scopeArgs` (exact / numeric range /
+  glob; `"*"` only in sandbox mode); out-of-scope → refuse regardless of the policy table.
+- `TerminalApprover` (`--approval terminal`, default No) and `FileApprover` (`--approval file`:
+  writes `approvals/<id>.json` with `decision:null`, polls, 30-minute timeout → denied by
+  "timeout"). Both injectable for tests.
+- `scrub()` local redaction rules (Anthropic/OpenAI/AWS/GitHub keys, bearer tokens, basic-auth
+  URLs, PAT/password assignments, ADO PAT shapes, email, IPv4, SSN, card) and `mask()` for logs.
+- Fixture regenerated: scenario now uses `ScopedGate`; reasons carry scope notes
+  (e.g. "read-only; work item 1 in scope"). Still 42 events, no shape change.
+- Tests: 85.
