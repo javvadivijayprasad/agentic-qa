@@ -8,7 +8,7 @@ import { summarizeCalls } from "./approval.js";
 import type { Clock } from "./clock.js";
 import { systemClock } from "./clock.js";
 import type { ContextBuilder } from "./context.js";
-import { BasicContextBuilder, compactResult } from "./context.js";
+import { OrderedContextBuilder, compactResult } from "./context.js";
 import type { HistoryItem, ModelClient, ProposedCall } from "./model.js";
 import type { ToolClient, ToolDescriptor } from "./tools.js";
 import { splitQualified } from "./tools.js";
@@ -45,7 +45,11 @@ export interface LoopResult {
  */
 export async function runLoop(deps: LoopDeps): Promise<LoopResult> {
   const clock = deps.clock ?? systemClock;
-  const ctx = deps.context ?? new BasicContextBuilder();
+  const ctx =
+    deps.context ??
+    new OrderedContextBuilder(
+      deps.skill.sourceTools ? { sourceTools: deps.skill.sourceTools } : {},
+    );
   const { ledger, model, tools, gate, approver, skill, config } = deps;
   const approvalIdFor = deps.approvalIdFor ?? ((n) => `apr-${String(n).padStart(4, "0")}`);
 

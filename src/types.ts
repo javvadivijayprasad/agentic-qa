@@ -61,8 +61,11 @@ export interface PlanPayload {
 
 /** Hashes and counts only — never content (SECRETS-CHECKLIST). */
 export interface ContextPayload {
-  sections: Array<{ name: string; sha256: string; tokens: number }>;
+  /** `dropped` counts history items trimmed from that section by a token cap (A6, additive). */
+  sections: Array<{ name: string; sha256: string; tokens: number; dropped?: number }>;
   totalTokens: number;
+  /** Total history items trimmed this cycle, when any (A6, additive). */
+  droppedItems?: number;
 }
 
 export interface InferencePayload {
@@ -195,8 +198,14 @@ export interface Skill {
   name: string;
   /** System-prompt fragment appended to the runtime instructions. */
   instructions: string;
-  /** Tool names (server-qualified, e.g. "ado.get_work_item") the model may call. */
+  /** Tool names (server-qualified, e.g. "ado.wit_work_item") the model may call. */
   allowedTools: string[];
+  /**
+   * Tools whose observations are primary sources for this skill (A6, additive
+   * and optional). Context assembly orders them ahead of the step history and
+   * trims them last.
+   */
+  sourceTools?: string[];
   verifier: Verifier;
 }
 

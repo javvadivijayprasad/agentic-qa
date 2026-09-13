@@ -39,9 +39,33 @@ export { ScriptedApprover, summarizeCalls } from "./runtime/approval.js";
 export type { Approver, ApprovalRequest, ApprovalResult } from "./runtime/approval.js";
 export { SteppingClock, systemClock } from "./runtime/clock.js";
 export type { Clock } from "./runtime/clock.js";
-export { BasicContextBuilder, compactResult, estimateTokens } from "./runtime/context.js";
-export type { ContextBuilder } from "./runtime/context.js";
+export {
+  BasicContextBuilder,
+  OrderedContextBuilder,
+  DEFAULT_CAPS,
+  compactResult,
+  estimateTokens,
+} from "./runtime/context.js";
+export type { ContextBuilder, ContextCaps, OrderedContextOptions } from "./runtime/context.js";
 export { ScriptedVerifier } from "./verify/scripted.js";
+export {
+  completedCalls,
+  successful,
+  artefacts,
+  refusals,
+  asRecord,
+  asArray,
+  numberField,
+} from "./verify/evidence.js";
+export type { CallRecord } from "./verify/evidence.js";
+export { StoryToTestsVerifier, createdCaseIds, parseWorkItemRef } from "./verify/story-to-tests.js";
+export type { StoryToTestsOptions } from "./verify/story-to-tests.js";
+export {
+  storyToTestsSkill,
+  storyToTestsInstructions,
+  STORY_TO_TESTS_TOOLS,
+  STORY_TO_TESTS_SOURCES,
+} from "./skills/story-to-tests.js";
 export {
   ScopedGate,
   matchesAny,

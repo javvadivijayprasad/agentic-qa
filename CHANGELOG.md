@@ -105,3 +105,28 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
   for exercising bdd2pw and pw without touching Azure DevOps.
 - Pinned `@azure-devops/mcp@2.10.0` and `@playwright/mcp@0.0.80` (the versions discovery recorded).
 - Tests: 144.
+
+### Added (A6 — skill, verifier, context ordering)
+- `src/verify/evidence.ts`: reads the ledger into `CallRecord`s by pairing `call` with
+  `observation` events. A call with no observation (refused, denied, or cut short) never appears,
+  so a refused write can never be mistaken for a completed one.
+- `src/verify/story-to-tests.ts`: `StoryToTestsVerifier` decides "done" from six observed facts —
+  story read, spec file present on disk, suite run green (zero failed AND zero skipped), cases
+  created, every case carrying `testsWorkItemId`, cases in a suite. Each failure is a `Gap` whose
+  `evidence` records what WAS seen, distinguishing not-attempted from attempted-and-failed.
+  `minCases`, `requireGreenSuite` and `requireSuiteMembership` are configurable.
+  `parseWorkItemRef()` pulls "AB#1" / "#1" / "work item 1" out of a request.
+- `src/skills/story-to-tests.ts`: the slice-1 skill — instructions (goal, the verifier's checks
+  stated as not the model's to decide, method, the `action` calling convention, working rules),
+  the 14 tools it may see, and the source tools. Tests assert the instructions name only actions
+  the manifest admits and only tools it classifies, so skill and governance cannot drift apart.
+- `src/runtime/context.ts`: `OrderedContextBuilder` (design §6) — primary sources ordered ahead of
+  step history and trimmed last, newest steps kept when over cap, tool schemas never trimmed, and
+  gate feedback never trimmed at any size (dropping it makes the model re-propose refused calls
+  until the budget dies). Now the loop's default; `BasicContextBuilder` remains for tests.
+- Contract, additive only: `ContextPayload.sections[].dropped` and `ContextPayload.droppedItems`
+  (optional, present only when trimming happened); `Skill.sourceTools` (optional). The `context`
+  event now reports a `sources` section alongside `history` — the fixture shows sources growing to
+  a plateau while history grows, which is the shape the run page should render.
+- Fixture regenerated (still 42 events) with `sourceTools` declared.
+- Tests: 177.

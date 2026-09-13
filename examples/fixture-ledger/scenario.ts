@@ -173,6 +173,9 @@ export function fixtureSkill(): Skill {
       "ado.create_test_cases",
       "ado.record_test_run",
     ],
+    // A6: the story and the file read are primary sources — ordered ahead of
+    // the step history and trimmed last by OrderedContextBuilder.
+    sourceTools: ["ado.get_work_item", "ado.get_repo_file", "tcg.generate"],
     verifier: new ScriptedVerifier([{ done: true, gaps: [] }]),
   };
 }
