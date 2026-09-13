@@ -9,7 +9,12 @@ agent:
   scope:
     work_items: ["1"]                 # exact ids or ranges: "100-199"
     repos: []                         # repo names the agent may write to (none for slice 1)
-    test_plans: ["Sandbox Plan"]      # Azure Test Plans the agent may create cases/suites in
+    # Azure Test Plans the agent may create cases/suites in. Entries are matched
+    # against the argument as passed, and the Azure DevOps MCP server uses the
+    # plan NAME when creating a plan but the numeric planId for suites and
+    # cases — so list both once the sandbox plan exists, e.g.
+    #   test_plans: ["Sandbox Plan", "3"]
+    test_plans: ["Sandbox Plan"]
     branches_writable: ["agent/*"]    # glob; protected branches are always destructive → refuse
   policy:
     read: execute

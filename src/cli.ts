@@ -8,11 +8,23 @@ import { buildReport, renderReportMarkdown } from "./mcp/discover.js";
 import { DEFAULT_MANIFEST } from "./mcp/manifest.js";
 import { azureDevOpsServer, playwrightServer } from "./mcp/servers.js";
 import { FsTools } from "./mcp/adapters/fs.js";
+import { Bdd2PwTools } from "./mcp/adapters/bdd2pw.js";
+import { PwTools } from "./mcp/adapters/pw.js";
+import { TcgTools } from "./mcp/adapters/tcg.js";
+import { SynthdataTools } from "./mcp/adapters/synthdata.js";
 import { ScopedGate } from "./governance/policy.js";
 import { mask } from "./governance/scrub.js";
 import type { ToolClient } from "./runtime/tools.js";
 
 export const VERSION = "0.1.0-dev.0";
+
+/** In-process adapters, by `--servers` name. */
+export const LOCAL_SERVERS = ["fs", "bdd2pw", "pw", "tcg", "synthdata"];
+/**
+ * `tcg` and `synthdata` are site-specific (they need TCG_URL / SYNTHDATA_CMD),
+ * so they are opt-in rather than on by default.
+ */
+export const DEFAULT_SERVERS = "ado,playwright,fs,bdd2pw,pw";
 
 const USAGE = `aqa — agentic QA runtime
 
@@ -21,7 +33,7 @@ Usage:
       Render a ledger to Markdown (no network, no tools). <path> is a run dir, a ledger
       root (uses the latest run), or an events.jsonl file.
 
-  aqa discover [--servers ado,playwright,fs] [--out docs/tools-observed.md] [--workspace .]
+  aqa discover [--servers ado,playwright,fs,bdd2pw,pw] [--out docs/tools-observed.md] [--workspace .]
       Spawn the MCP servers, list their tools, and write the observed names + schemas.
       Reads .env for credentials. Makes NO tool calls — listTools() only.
 
@@ -130,7 +142,7 @@ async function buildTooling(
   loadDotEnv(flag(args, "--env") ?? ".env");
   const env = readRuntimeEnv(process.env, { requireAnthropic: false });
   const workspace = resolve(flag(args, "--workspace") ?? ".");
-  const wanted = (flag(args, "--servers") ?? "ado,playwright,fs")
+  const wanted = (flag(args, "--servers") ?? DEFAULT_SERVERS)
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
@@ -144,8 +156,14 @@ async function buildTooling(
         );
       specs.push(azureDevOpsServer(env));
     } else if (w === "playwright") specs.push(playwrightServer());
-    else if (w !== "fs")
-      throw new ConfigError(`unknown server "${w}" (known: ado, playwright, fs)`);
+    else if (w === "tcg" && !env.tcgUrl)
+      throw new ConfigError("--servers includes tcg but TCG_URL is not set");
+    else if (w === "synthdata" && !env.synthdataCmd)
+      throw new ConfigError("--servers includes synthdata but SYNTHDATA_CMD is not set");
+    else if (!LOCAL_SERVERS.includes(w))
+      throw new ConfigError(
+        `unknown server "${w}" (known: ado, playwright, ${LOCAL_SERVERS.join(", ")})`,
+      );
   }
   if (env.azureDevOps)
     io.err(
@@ -158,6 +176,11 @@ async function buildTooling(
         const mcp = new McpToolClient(specs, DEFAULT_MANIFEST);
         const clients: ToolClient[] = specs.length > 0 ? [mcp] : [];
         if (wanted.includes("fs")) clients.push(new FsTools(workspace));
+        if (wanted.includes("bdd2pw")) clients.push(new Bdd2PwTools(workspace));
+        if (wanted.includes("pw")) clients.push(new PwTools(workspace));
+        if (wanted.includes("tcg") && env.tcgUrl) clients.push(new TcgTools(env.tcgUrl));
+        if (wanted.includes("synthdata") && env.synthdataCmd)
+          clients.push(new SynthdataTools(env.synthdataCmd, workspace));
         return { tools: new CompositeTools(clients), close: () => mcp.close() };
       })();
   return { specs, ...built, workspace };
@@ -172,9 +195,11 @@ export async function discover(args: string[], io: CliIo, deps: ToolingDeps = {}
     const report = buildReport(
       [
         ...specs,
-        ...(list.some((t) => t.server === "fs")
-          ? [{ name: "fs", command: "(in-process)", args: [] }]
-          : []),
+        ...LOCAL_SERVERS.filter((n) => list.some((t) => t.server === n)).map((name) => ({
+          name,
+          command: "(in-process)",
+          args: [],
+        })),
       ],
       list,
       DEFAULT_MANIFEST,
@@ -219,10 +244,22 @@ export async function run(args: string[], io: CliIo, deps: ToolingDeps = {}): Pr
     );
     io.out(`  ${list.length} tools visible to the gate (class → table decision):\n`);
     for (const t of list) {
-      const v = gate.judge({ toolName: `${t.server}.${t.name}`, args: {} }, t);
-      io.out(
-        `    ${t.server}.${t.name}: ${t.policyClass} → ${config.policy[t.policyClass]}${v.decision === "refuse" && t.policyClass !== "destructive" ? " (scope args required)" : ""}\n`,
-      );
+      const qname = `${t.server}.${t.name}`;
+      io.out(`    ${qname}: ${t.policyClass} → ${config.policy[t.policyClass]}\n`);
+      const actions = Object.entries(t.actions ?? {});
+      for (const [action, a] of actions) {
+        const verdict = gate.judge(
+          { toolName: qname, args: { [t.actionArg ?? "action"]: action } },
+          t,
+        );
+        io.out(
+          `        ${t.actionArg}=${action}: ${a.policyClass} → ${config.policy[a.policyClass]}${scopeHint(verdict)}\n`,
+        );
+      }
+      if (actions.length === 0) {
+        const hint = scopeHint(gate.judge({ toolName: qname, args: {} }, t));
+        if (hint) io.out(`       ${hint}\n`);
+      }
     }
     io.out("  no model or tool calls were made.\n");
     return 0;
@@ -232,6 +269,13 @@ export async function run(args: string[], io: CliIo, deps: ToolingDeps = {}): Pr
 }
 
 // ---------------------------------------------------------------------------
+
+/** Show, in the dry run, which argument a tool still needs before it can pass the gate. */
+function scopeHint(v: { decision: string; reason: string }): string {
+  return v.decision === "refuse" && /required for scope checks/.test(v.reason)
+    ? ` — ${v.reason}`
+    : "";
+}
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);

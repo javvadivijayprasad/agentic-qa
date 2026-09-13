@@ -1,6 +1,6 @@
 import type { ToolClient, ToolDescriptor, ToolResult } from "../runtime/tools.js";
 import { qualify } from "../runtime/tools.js";
-import { classify, type Manifest } from "./manifest.js";
+import { classify, entryClass, type Manifest } from "./manifest.js";
 
 /**
  * The slice of an MCP client session this package uses. Matches the shapes of
@@ -103,9 +103,13 @@ export class McpToolClient implements ToolClient {
           name: t.name,
           description: t.description ?? "",
           inputSchema: t.inputSchema ?? {},
-          policyClass: entry.policyClass,
+          // Worst case over the classified actions, so the model is never
+          // under-warned about a tool that can also write.
+          policyClass: entryClass(entry),
         };
         if (entry.scopeArgs) d.scopeArgs = entry.scopeArgs;
+        if (entry.actionArg) d.actionArg = entry.actionArg;
+        if (entry.actions) d.actions = entry.actions;
         this.descriptors.push(d);
       }
     }

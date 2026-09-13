@@ -25,7 +25,14 @@ export type {
   HistoryItem,
 } from "./runtime/model.js";
 export { StubTools, qualify, splitQualified } from "./runtime/tools.js";
-export type { ToolClient, ToolDescriptor, ToolResult, StubHandler } from "./runtime/tools.js";
+export type {
+  ToolClient,
+  ToolDescriptor,
+  ToolResult,
+  StubHandler,
+  ActionDescriptor,
+  ScopeArgs,
+} from "./runtime/tools.js";
 export { TableGate } from "./governance/policy.js";
 export type { Gate, GateVerdict } from "./governance/policy.js";
 export { ScriptedApprover, summarizeCalls } from "./runtime/approval.js";
@@ -39,6 +46,7 @@ export {
   ScopedGate,
   matchesAny,
   raise,
+  resolveAction,
   DESTRUCTIVE_NAME_PATTERNS,
   PROTECTED_BRANCHES,
 } from "./governance/policy.js";
@@ -66,9 +74,19 @@ export type {
   ServerSpec,
   SessionFactory,
 } from "./mcp/client.js";
-export { DEFAULT_MANIFEST, UNCLASSIFIED, classify } from "./mcp/manifest.js";
+export { DEFAULT_MANIFEST, UNCLASSIFIED, classify, entryClass } from "./mcp/manifest.js";
 export type { Manifest, ManifestEntry } from "./mcp/manifest.js";
 export { azureDevOpsServer, playwrightServer, npxCommand, PINNED_VERSIONS } from "./mcp/servers.js";
 export { FsTools } from "./mcp/adapters/fs.js";
+export { Bdd2PwTools, parseFeature, renderSpec } from "./mcp/adapters/bdd2pw.js";
+export type { GherkinFeature, GherkinScenario, GherkinStep } from "./mcp/adapters/bdd2pw.js";
+export { PwTools, summarise } from "./mcp/adapters/pw.js";
+export type { PwOptions, TestRunSummary } from "./mcp/adapters/pw.js";
+export { TcgTools } from "./mcp/adapters/tcg.js";
+export type { TcgOptions, FetchLike } from "./mcp/adapters/tcg.js";
+export { SynthdataTools } from "./mcp/adapters/synthdata.js";
+export type { SynthdataOptions } from "./mcp/adapters/synthdata.js";
+export { execFileRunner, splitCommand } from "./mcp/adapters/process.js";
+export type { CommandRunner, CommandResult } from "./mcp/adapters/process.js";
 export { buildReport, renderReportMarkdown } from "./mcp/discover.js";
 export type { DiscoveryReport } from "./mcp/discover.js";

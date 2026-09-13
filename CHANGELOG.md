@@ -78,3 +78,30 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
 - `examples/ai-quality.config.yaml`: the sandbox config (work item 1, `agent/*` branches).
 - Dependencies: `@modelcontextprotocol/sdk`, `yaml`.
 - Tests: 113.
+
+### Added (A5 — per-action governance, adapters)
+- **Per-action classification.** Microsoft's Azure DevOps MCP server multiplexes operations behind
+  an `action` argument and mixes reads with writes under one tool name (`wit_backlog` does `list`
+  and `reorder`; `wit_work_item_link_write` does `link` and `unlink`). `ToolDescriptor` gained
+  `actionArg` + `actions`, `ManifestEntry` the same, and `resolveAction()` resolves a call to one
+  operation before the gate classifies it. An action absent from the manifest is refused exactly
+  like an unknown tool; a missing `action` argument is refused rather than guessed.
+- `DEFAULT_MANIFEST` filled in from `docs/tools-observed.json` (67 tools, 2026-09-12): 13 Azure
+  DevOps read actions/tools, 6 write_record actions (test case / suite / plan create, add cases,
+  update steps, work item comment), 1 write_branch tool, 6 observational Playwright tools. Every
+  name is checked against the recorded schemas by a test — nothing is admitted from memory.
+- Gate: destructive-by-name now also inspects the ACTION name, and `unlink` / `remove` joined the
+  destructive patterns. Scope arguments may be lists (`ids: [1,2]`) and every element must be in
+  scope.
+- In-process adapters: `bdd2pw` (Gherkin → Playwright spec skeleton; `Scenario Outline` rows
+  expanded; every generated test is `fixme` so an unimplemented skeleton can never report a pass),
+  `pw` (runs the suite, parses the JSON reporter, `green` requires zero failed AND zero skipped),
+  `tcg` (POSTs to `TCG_URL`, which is the full endpoint), `synthdata` (runs `SYNTHDATA_CMD` with no
+  shell). All external I/O is injected, so the suite spawns nothing and makes no requests.
+- CLI: `--servers` learned `bdd2pw`, `pw`, `tcg`, `synthdata` (the last two opt-in, requiring
+  `TCG_URL` / `SYNTHDATA_CMD`); default is now `ado,playwright,fs,bdd2pw,pw`. `run --dry-run`
+  prints one line per classified action with the argument each still needs.
+- `examples/sandbox/features/login.feature` — AB#1's four acceptance criteria as a feature file,
+  for exercising bdd2pw and pw without touching Azure DevOps.
+- Pinned `@azure-devops/mcp@2.10.0` and `@playwright/mcp@0.0.80` (the versions discovery recorded).
+- Tests: 144.

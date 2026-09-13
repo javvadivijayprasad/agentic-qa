@@ -77,6 +77,21 @@ function fakeTooling() {
         policyClass: "destructive",
       },
       { ok: true, result: {}, artefacts: [] },
+    )
+    .add(
+      {
+        server: "ado",
+        name: "testplan",
+        description: "Multiplexed",
+        inputSchema: { type: "object" },
+        policyClass: "write_record",
+        actionArg: "action",
+        actions: {
+          list_plans: { policyClass: "read" },
+          create: { policyClass: "write_record", scopeArgs: { testPlan: "name" } },
+        },
+      },
+      { ok: true, result: {}, artefacts: [] },
     );
   let closed = false;
   return {
@@ -100,7 +115,7 @@ describe("aqa discover", () => {
     expect(existsSync(out)).toBe(true);
     expect(existsSync(out.replace(/\.md$/, ".json"))).toBe(true);
     expect(readFileSync(out, "utf8")).toContain("`ado.mystery` | destructive | **no**");
-    expect(buf.out).toMatch(/2 tools from .* 1 unclassified/);
+    expect(buf.out).toMatch(/3 tools from .* 1 unclassified/);
     expect(buf.out).toContain("! ado.mystery");
     expect(ft.isClosed()).toBe(true);
   });
@@ -151,8 +166,13 @@ describe("aqa run --dry-run", () => {
     );
     expect(code).toBe(0);
     expect(buf.out).toContain('aqa run --dry-run: "Write tests for AB#1"');
-    expect(buf.out).toContain("ado.wit_get_work_item: read → execute (scope args required)");
+    expect(buf.out).toContain("ado.wit_get_work_item: read → execute");
+    expect(buf.out).toMatch(/argument "id" \(work item\) is required for scope checks/);
     expect(buf.out).toContain("ado.mystery: destructive → refuse");
+    // an action-multiplexed tool is shown per action, worst case first
+    expect(buf.out).toContain("ado.testplan: write_record → ask");
+    expect(buf.out).toContain("action=list_plans: read → execute");
+    expect(buf.out).toContain("action=create: write_record → ask");
     expect(buf.out).toContain("no model or tool calls were made");
     expect(ft.isClosed()).toBe(true);
   });

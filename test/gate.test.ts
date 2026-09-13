@@ -251,3 +251,81 @@ describe("ScopedGate — design §7 table reproduced", () => {
     expect(g.judge({ toolName: "x.y", args: {} }, undefined).decision).toBe("refuse");
   });
 });
+
+// ---------------------------------------------------------------------------
+// A5: action-multiplexed tools (Microsoft's ADO server mixes reads and writes
+// behind one tool name, selected by an `action` argument).
+// ---------------------------------------------------------------------------
+
+const multiplexed = tool({
+  name: "wit_work_item",
+  policyClass: "write_record", // worst case over the actions below
+  actionArg: "action",
+  actions: {
+    get: { policyClass: "read", scopeArgs: { workItem: "id" } },
+    get_batch: { policyClass: "read", scopeArgs: { workItem: "ids" } },
+    comment: { policyClass: "write_record", scopeArgs: { workItem: "workItemId" } },
+    unlink: { policyClass: "write_record" },
+  },
+});
+
+describe("ScopedGate: action multiplexing", () => {
+  const g = new ScopedGate(DEFAULT_POLICY, scope);
+  const judge = (args: Record<string, unknown>) =>
+    g.judge({ toolName: "ado.wit_work_item", args }, multiplexed);
+
+  it("classifies by ACTION, not by tool: a read action executes though the tool can write", () => {
+    const v = judge({ action: "get", id: 1 });
+    expect(v.class).toBe("read");
+    expect(v.decision).toBe("execute");
+    expect(v.reason).toContain('action "get"');
+  });
+
+  it("still asks for a write action on the same tool", () => {
+    expect(judge({ action: "comment", workItemId: 1 }).decision).toBe("ask");
+  });
+
+  it("refuses an action the manifest does not list, and says which are classified", () => {
+    const v = judge({ action: "reorder", id: 1 });
+    expect(v.decision).toBe("refuse");
+    expect(v.class).toBe("destructive");
+    expect(v.reason).toMatch(/action "reorder".*not in the governance manifest/);
+    expect(v.reason).toContain("get, get_batch, comment, unlink");
+  });
+
+  it("refuses when the action argument is missing rather than guessing", () => {
+    const v = judge({ id: 1 });
+    expect(v.decision).toBe("refuse");
+    expect(v.reason).toMatch(/argument "action".*is required/);
+  });
+
+  it("raises to destructive on a destructive action name", () => {
+    const v = judge({ action: "unlink" });
+    expect(v.class).toBe("destructive");
+    expect(v.decision).toBe("refuse");
+    expect(v.reason).toContain('destructive by action name "unlink"');
+  });
+
+  it("uses the per-action scope argument", () => {
+    expect(judge({ action: "get", id: 999 }).decision).toBe("refuse"); // out of scope
+    expect(judge({ action: "get", workItemId: 1 }).decision).toBe("refuse"); // wrong arg for this action
+    expect(judge({ action: "comment", workItemId: 150 }).decision).toBe("ask"); // in range
+  });
+
+  it("checks every element of a list-valued scope argument", () => {
+    expect(judge({ action: "get_batch", ids: [1, 150] }).decision).toBe("execute");
+    expect(judge({ action: "get_batch", ids: [1, 999] }).decision).toBe("refuse");
+    expect(judge({ action: "get_batch", ids: [] }).decision).toBe("refuse");
+    expect(judge({ action: "get_batch", ids: [1, { nested: true }] }).decision).toBe("refuse");
+  });
+
+  it("TableGate resolves actions too, so a scopeless caller cannot bypass them", () => {
+    const t = new TableGate(DEFAULT_POLICY);
+    expect(
+      t.judge({ toolName: "ado.wit_work_item", args: { action: "get" } }, multiplexed).decision,
+    ).toBe("execute");
+    expect(
+      t.judge({ toolName: "ado.wit_work_item", args: { action: "reorder" } }, multiplexed).decision,
+    ).toBe("refuse");
+  });
+});

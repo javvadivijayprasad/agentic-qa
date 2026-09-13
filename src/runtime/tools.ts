@@ -4,6 +4,25 @@ import type { PolicyClass } from "../types.js";
  * A tool as the model sees it. `server` + `name` are how MCP addresses it; the
  * model refers to it by the qualified name "<server>.<name>".
  */
+/**
+ * Which arguments carry scope-bearing values, so the gate can check them
+ * against the config allow-lists. Keys are scope dimensions, values are
+ * argument names in `inputSchema`. An argument holding a list (e.g. `ids`) is
+ * checked element by element; every element must be in scope.
+ */
+export interface ScopeArgs {
+  workItem?: string;
+  repo?: string;
+  testPlan?: string;
+  branch?: string;
+}
+
+/** One operation of an action-multiplexed tool (see `ToolDescriptor.actions`). */
+export interface ActionDescriptor {
+  policyClass: PolicyClass;
+  scopeArgs?: ScopeArgs;
+}
+
 export interface ToolDescriptor {
   server: string;
   name: string;
@@ -13,20 +32,26 @@ export interface ToolDescriptor {
   /**
    * Governance class assigned by the tool manifest. The gate may raise it
    * (never lower it) after inspecting arguments — e.g. a branch write to a
-   * protected branch becomes `destructive`.
+   * protected branch becomes `destructive`. For an action-multiplexed tool
+   * this is the WORST case over `actions`: it is what the model is told, so
+   * the model is never under-warned about what a tool can do.
    */
   policyClass: PolicyClass;
+  scopeArgs?: ScopeArgs;
   /**
-   * Which arguments carry scope-bearing values, so the gate can check them
-   * against the config allow-lists. Keys are scope dimensions, values are
-   * argument names in `inputSchema`.
+   * Name of the argument that selects the operation, for tools that multiplex
+   * several operations behind one name. Microsoft's Azure DevOps MCP server
+   * does this throughout (`action: "get" | "reorder" | …`), mixing reads and
+   * writes under one tool, so a class per TOOL would be either too loose or
+   * too tight. When set, the gate resolves the class from `actions[action]`.
    */
-  scopeArgs?: {
-    workItem?: string;
-    repo?: string;
-    testPlan?: string;
-    branch?: string;
-  };
+  actionArg?: string;
+  /**
+   * The operations this tool is allowed to perform, keyed by the value of
+   * `actionArg`. An action that is absent here is unclassified and therefore
+   * refused, exactly like an unknown tool.
+   */
+  actions?: Record<string, ActionDescriptor>;
 }
 
 export interface ToolResult {

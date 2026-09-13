@@ -1,7 +1,7 @@
 import type { PolicyClass, PolicyDecision, PolicyTable, ScopeConfig } from "../types.js";
 import { DEFAULT_POLICY, POLICY_CLASSES } from "../types.js";
 import type { ProposedCall } from "../runtime/model.js";
-import type { ToolDescriptor } from "../runtime/tools.js";
+import type { ScopeArgs, ToolDescriptor } from "../runtime/tools.js";
 
 /**
  * Result of gating one proposed call. `class` is what the call was judged to be,
@@ -33,9 +33,16 @@ export function raise(a: PolicyClass, b: PolicyClass): PolicyClass {
   return RANK[b] > RANK[a] ? b : a;
 }
 
-/** Tool-name fragments that are destructive regardless of the manifest class. */
+/**
+ * Tool-name — and, since A5, ACTION-name — fragments that are destructive
+ * regardless of the manifest class. `unlink` and `remove` were added when the
+ * Azure DevOps server turned out to hide them inside otherwise ordinary tools
+ * (`wit_work_item_link_write` does both `link` and `unlink`).
+ */
 export const DESTRUCTIVE_NAME_PATTERNS: RegExp[] = [
   /(^|[_.-])delete($|[_.-])/i,
+  /(^|[_.-])unlink($|[_.-])/i,
+  /(^|[_.-])remove($|[_.-])/i,
   /(^|[_.-])destroy($|[_.-])/i,
   /(^|[_.-])purge($|[_.-])/i,
   /force[_-]?push/i,
@@ -46,6 +53,49 @@ export const DESTRUCTIVE_NAME_PATTERNS: RegExp[] = [
 
 /** Branches that are never writable, whatever the allow-list says. */
 export const PROTECTED_BRANCHES = ["main", "master", "release", "production", "prod"];
+
+/**
+ * Resolve an action-multiplexed tool down to the one operation being asked for
+ * (design §7.1, added in A5). Tools that do not multiplex pass straight
+ * through. A missing or unlisted action is a refusal, never a guess: the whole
+ * point of per-action classification is that `wit_backlog` may `list` but may
+ * not `reorder`.
+ */
+export function resolveAction(
+  tool: ToolDescriptor,
+  args: Record<string, unknown>,
+):
+  | { ok: true; class: PolicyClass; scopeArgs: ScopeArgs | undefined; note?: string }
+  | { ok: false; class: PolicyClass; reason: string } {
+  if (!tool.actionArg) {
+    return { ok: true, class: tool.policyClass, scopeArgs: tool.scopeArgs };
+  }
+  const action = str(args[tool.actionArg]);
+  if (action === undefined) {
+    return {
+      ok: false,
+      class: tool.policyClass,
+      reason: `argument "${tool.actionArg}" (which operation) is required; ${tool.name} multiplexes several operations`,
+    };
+  }
+  const entry = tool.actions?.[action];
+  if (!entry) {
+    const known = Object.keys(tool.actions ?? {});
+    return {
+      ok: false,
+      class: "destructive",
+      reason: `action "${action}" of ${tool.server}.${tool.name} is not in the governance manifest${
+        known.length > 0 ? ` (classified: ${known.join(", ")})` : ""
+      }`,
+    };
+  }
+  return {
+    ok: true,
+    class: entry.policyClass,
+    scopeArgs: entry.scopeArgs ?? tool.scopeArgs,
+    note: `action "${action}"`,
+  };
+}
 
 function validateTable(table: PolicyTable): void {
   for (const c of POLICY_CLASSES) {
@@ -72,12 +122,14 @@ export class TableGate implements Gate {
         reason: `unknown tool ${call.toolName}; not in the tool manifest`,
       };
     }
-    const cls = tool.policyClass;
+    const resolved = resolveAction(tool, call.args);
+    if (!resolved.ok) return refuse(call, resolved.class, resolved.reason);
+    const cls = resolved.class;
     return {
       toolName: call.toolName,
       class: cls,
       decision: this.table[cls],
-      reason: reasonFor(cls),
+      reason: [reasonFor(cls), resolved.note].filter(Boolean).join("; "),
     };
   }
 }
@@ -106,8 +158,13 @@ export class ScopedGate extends TableGate {
   override judge(call: ProposedCall, tool: ToolDescriptor | undefined): GateVerdict {
     if (!tool) return super.judge(call, tool);
 
-    let cls: PolicyClass = tool.policyClass;
+    // 0. which operation is this? (action-multiplexed tools)
+    const resolved = resolveAction(tool, call.args);
+    if (!resolved.ok) return refuse(call, resolved.class, resolved.reason);
+    let cls: PolicyClass = resolved.class;
+    const scopeArgs = resolved.scopeArgs;
     const notes: string[] = [];
+    if (resolved.note) notes.push(resolved.note);
 
     // 1a. destructive by name
     const bare = call.toolName.split(".").pop() ?? call.toolName;
@@ -115,9 +172,16 @@ export class ScopedGate extends TableGate {
       cls = raise(cls, "destructive");
       notes.push("destructive by tool name");
     }
+    // …and by action name: `unlink`, `delete_x` and friends are destructive
+    // whatever the manifest says about the tool that hosts them.
+    const actionValue = tool.actionArg ? str(call.args[tool.actionArg]) : undefined;
+    if (actionValue && DESTRUCTIVE_NAME_PATTERNS.some((re) => re.test(actionValue))) {
+      cls = raise(cls, "destructive");
+      notes.push(`destructive by action name "${actionValue}"`);
+    }
 
     // 1b. branch inspection
-    const branchArg = tool.scopeArgs?.branch;
+    const branchArg = scopeArgs?.branch;
     if (branchArg) {
       const branch = str(call.args[branchArg]);
       if (branch === undefined) {
@@ -132,24 +196,24 @@ export class ScopedGate extends TableGate {
     }
 
     // 2. scope allow-lists
-    const checks: Array<
-      [keyof NonNullable<ToolDescriptor["scopeArgs"]>, keyof ScopeConfig, string]
-    > = [
+    const checks: Array<[keyof ScopeArgs, keyof ScopeConfig, string]> = [
       ["workItem", "work_items", "work item"],
       ["repo", "repos", "repo"],
       ["testPlan", "test_plans", "test plan"],
     ];
     for (const [hint, listKey, label] of checks) {
-      const argName = tool.scopeArgs?.[hint];
+      const argName = scopeArgs?.[hint];
       if (!argName) continue;
-      const value = str(call.args[argName]);
-      if (value === undefined) {
+      const values = strList(call.args[argName]);
+      if (values === undefined || values.length === 0) {
         return refuse(call, cls, `argument "${argName}" (${label}) is required for scope checks`);
       }
-      if (!matchesAny(value, this.scope[listKey], this.opts.sandbox)) {
-        return refuse(call, cls, `${label} "${value}" is not in the allowed ${listKey}`);
+      // Every element of a list argument must be in scope; one stray id is enough to refuse.
+      const bad = values.find((v) => !matchesAny(v, this.scope[listKey], this.opts.sandbox));
+      if (bad !== undefined) {
+        return refuse(call, cls, `${label} "${bad}" is not in the allowed ${listKey}`);
       }
-      notes.push(`${label} ${value} in scope`);
+      notes.push(`${label} ${values.join(",")} in scope`);
     }
 
     // 3. table
@@ -167,6 +231,26 @@ function str(v: unknown): string | undefined {
   if (typeof v === "string") return v;
   if (typeof v === "number" && Number.isFinite(v)) return String(v);
   return undefined;
+}
+
+/**
+ * A scope-bearing argument as a list. Scalars become one-element lists; a real
+ * list (e.g. `ids: [1, 2, 3]` for a batch read) keeps every element so each is
+ * checked. A list containing anything that is not a string or finite number is
+ * rejected outright rather than silently skipped.
+ */
+function strList(v: unknown): string[] | undefined {
+  if (Array.isArray(v)) {
+    const out: string[] = [];
+    for (const item of v) {
+      const s = str(item);
+      if (s === undefined) return undefined;
+      out.push(s);
+    }
+    return out;
+  }
+  const s = str(v);
+  return s === undefined ? undefined : [s];
 }
 
 /**

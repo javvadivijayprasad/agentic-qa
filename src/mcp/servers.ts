@@ -2,20 +2,22 @@ import type { RuntimeEnv } from "../config.js";
 import type { ServerSpec } from "./client.js";
 
 /**
- * Default server specs (PLAN §1 A4). Versions are pinned AFTER `aqa discover`
- * has run against the sandbox and `docs/tools-observed.md` records what each
- * version exposes — until then we deliberately spawn "latest" and print the
- * resolved version in the discovery report.
+ * Default server specs (PLAN §1 A4/A5). Versions are PINNED to the exact
+ * releases whose tool surface `docs/tools-observed.md` records (67 tools
+ * enumerated 2026-09-12 against the sandbox). The governance manifest is
+ * written against those names, so an unpinned upgrade could silently add or
+ * rename tools; anything not in the manifest is refused, but pinning keeps the
+ * reproducibility bundle honest. Override per run with the env vars below.
  *
  * Azure DevOps MCP server: Microsoft's `@azure-devops/mcp`. It authenticates via
- * Azure identity by default; PAT support is passed through the environment and
- * confirmed by the discovery run (see handoff). Playwright MCP: Microsoft's
- * `@playwright/mcp` — browser automation (navigate, snapshot, click…). Running a
- * Playwright TEST SUITE is not an MCP tool; that is our own adapter (A5).
+ * Azure identity by default; PAT support is passed through the environment.
+ * Playwright MCP: Microsoft's `@playwright/mcp` — browser automation (navigate,
+ * snapshot, click…). Running a Playwright TEST SUITE is not an MCP tool; that is
+ * our own adapter (A5).
  */
 export const PINNED_VERSIONS = {
-  ado: process.env["AQA_ADO_MCP_VERSION"] ?? "latest",
-  playwright: process.env["AQA_PLAYWRIGHT_MCP_VERSION"] ?? "latest",
+  ado: process.env["AQA_ADO_MCP_VERSION"] ?? "2.10.0",
+  playwright: process.env["AQA_PLAYWRIGHT_MCP_VERSION"] ?? "0.0.80",
 };
 
 export function azureDevOpsServer(env: RuntimeEnv): ServerSpec {
