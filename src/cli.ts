@@ -2,7 +2,21 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "nod
 import { dirname, join, resolve } from "node:path";
 import { readLedgerFile, LEDGER_FILE } from "./ledger/ledger.js";
 import { renderMarkdown } from "./ledger/replay.js";
-import { ConfigError, loadAgentConfig, loadDotEnv, readRuntimeEnv } from "./config.js";
+import {
+  ConfigError,
+  loadAgentConfig,
+  loadDotEnv,
+  readRuntimeEnv,
+  type RuntimeEnv,
+} from "./config.js";
+import { Ledger, newRunId, APPROVALS_DIR } from "./ledger/ledger.js";
+import { runLoop } from "./runtime/loop.js";
+import { AnthropicModel } from "./runtime/anthropic.js";
+import { TerminalApprover, FileApprover } from "./runtime/approvers.js";
+import { storyToTestsSkill } from "./skills/story-to-tests.js";
+import { parseWorkItemRef } from "./verify/story-to-tests.js";
+import { EXIT_CODES, type AgentConfig } from "./types.js";
+import type { ModelClient } from "./runtime/model.js";
 import { CompositeTools, McpToolClient, type ServerSpec } from "./mcp/client.js";
 import { buildReport, renderReportMarkdown } from "./mcp/discover.js";
 import { DEFAULT_MANIFEST } from "./mcp/manifest.js";
@@ -12,8 +26,8 @@ import { Bdd2PwTools } from "./mcp/adapters/bdd2pw.js";
 import { PwTools } from "./mcp/adapters/pw.js";
 import { TcgTools } from "./mcp/adapters/tcg.js";
 import { SynthdataTools } from "./mcp/adapters/synthdata.js";
-import { ScopedGate } from "./governance/policy.js";
-import { mask } from "./governance/scrub.js";
+import { ScopedGate, matchesAny } from "./governance/policy.js";
+import { mask, scrub } from "./governance/scrub.js";
 import type { ToolClient } from "./runtime/tools.js";
 
 export const VERSION = "0.1.0-dev.0";
@@ -38,9 +52,13 @@ Usage:
       Reads .env for credentials. Makes NO tool calls — listTools() only.
 
   aqa run "<request>" --config <ai-quality.config.yaml> [--ledger .aqa]
-          [--approval terminal|file] [--dry-run] [--servers ...] [--workspace .]
-      --dry-run: load config, connect servers, list tools with their gate class, exit 0.
-      Without --dry-run: not implemented yet (model adapter arrives in A7).
+          [--approval terminal|file] [--work-item <id>] [--dry-run]
+          [--servers ...] [--workspace .] [--env .env]
+      Run the agent loop. The work item comes from the request ("AB#1") unless
+      --work-item says otherwise, and must be in agent.scope.work_items.
+      --dry-run: load config, connect servers, list tools with their gate class,
+      make no model or tool calls, exit 0.
+      Exit codes: 0 done, 1 error, 2 blocked, 3 refused, 4 budget.
 
   aqa --version | -v      aqa --help | -h
 `;
@@ -127,6 +145,8 @@ export interface ToolingDeps {
     specs: ServerSpec[],
     workspace: string,
   ) => Promise<{ tools: ToolClient; close: () => Promise<void> }>;
+  /** Override for tests: supply the model instead of calling Anthropic. */
+  buildModel?: (env: RuntimeEnv, config: AgentConfig) => ModelClient;
 }
 
 async function buildTooling(
@@ -225,10 +245,7 @@ export async function run(args: string[], io: CliIo, deps: ToolingDeps = {}): Pr
   if (!configPath) return (io.err("aqa run: --config <ai-quality.config.yaml> is required\n"), 1);
   const config = await loadAgentConfig(configPath);
 
-  if (!args.includes("--dry-run")) {
-    io.err("aqa run: only --dry-run is implemented so far (model adapter arrives in A7).\n");
-    return 1;
-  }
+  if (!args.includes("--dry-run")) return live(request, args, config, io, deps);
   const { tools, close } = await buildTooling(args, io, deps);
   try {
     const list = await tools.listTools();
@@ -269,6 +286,92 @@ export async function run(args: string[], io: CliIo, deps: ToolingDeps = {}): Pr
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * A real run: model, tools, gate, approver, ledger, loop. Everything the dry
+ * run describes, actually done (PLAN §1 A7).
+ */
+async function live(
+  request: string,
+  args: string[],
+  config: AgentConfig,
+  io: CliIo,
+  deps: ToolingDeps,
+): Promise<number> {
+  loadDotEnv(flag(args, "--env") ?? ".env");
+  // Read without demanding the API key first: refusing an out-of-scope request
+  // should not require credentials, and the key is only needed once a model is
+  // actually built.
+  const env = readRuntimeEnv(process.env, { requireAnthropic: false });
+
+  const approvalMode = flag(args, "--approval") ?? "terminal";
+  if (approvalMode !== "file" && approvalMode !== "terminal") {
+    io.err(`aqa run: --approval must be "terminal" or "file"\n`);
+    return 1;
+  }
+
+  // The run is scoped to one story. Refuse before spending a token if the
+  // request names a work item the config does not allow.
+  const workItem = flag(args, "--work-item") ?? parseWorkItemRef(request);
+  if (!workItem) {
+    io.err('aqa run: no work item in the request. Write it as "AB#1", or pass --work-item <id>.\n');
+    return 1;
+  }
+  if (!matchesAny(workItem, config.scope.work_items, env.sandbox)) {
+    io.err(
+      `aqa run: work item ${workItem} is not in agent.scope.work_items (${
+        config.scope.work_items.join(", ") || "empty"
+      }).\n`,
+    );
+    return EXIT_CODES.refused;
+  }
+
+  const ledger = new Ledger(flag(args, "--ledger") ?? ".aqa", newRunId());
+  const approver =
+    approvalMode === "file"
+      ? new FileApprover({ dir: join(ledger.dir, APPROVALS_DIR) })
+      : new TerminalApprover();
+
+  const { tools, close, workspace } = await buildTooling(args, io, deps);
+  try {
+    const skill = storyToTestsSkill({ workItem });
+    if (!deps.buildModel && !env.anthropicApiKey)
+      throw new ConfigError("ANTHROPIC_API_KEY is not set");
+    const model =
+      deps.buildModel?.(env, config) ??
+      new AnthropicModel({
+        apiKey: env.anthropicApiKey,
+        model: env.model ?? config.model,
+        promptVersion: config.prompt_version,
+        warn: (m) => io.err(`aqa: ${scrub(m).text}\n`),
+      });
+
+    io.err(`aqa run ${ledger.runId}: "${request}"\n`);
+    io.err(
+      `aqa: skill ${skill.name}, work item ${workItem}, model ${model.model}, approval ${approvalMode}\n`,
+    );
+    io.err(`aqa: ledger ${ledger.dir}\n`);
+
+    const result = await runLoop({
+      requestText: request,
+      model,
+      tools,
+      gate: new ScopedGate(config.policy, config.scope, { sandbox: env.sandbox }),
+      approver,
+      skill,
+      ledger,
+      config,
+      workspaceDir: workspace,
+    });
+
+    io.out(`\n${result.status}: ${result.summary}\n`);
+    io.out(`  ${result.events} events in ${ledger.dir}\n`);
+    io.out(`  replay: aqa replay ${ledger.dir}\n`);
+    return result.exitCode;
+  } finally {
+    await close();
+  }
+}
 
 /** Show, in the dry run, which argument a tool still needs before it can pass the gate. */
 function scopeHint(v: { decision: string; reason: string }): string {

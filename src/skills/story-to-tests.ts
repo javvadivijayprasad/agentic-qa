@@ -72,6 +72,10 @@ METHOD
    fs.list_dir to find real selectors — do not guess them. Replace the TODO
    bodies with real Playwright calls, delete the test.fixme line, and write the
    file back with fs.write_file.
+   Never hard-code the application's address. Navigate with relative paths
+   (page.goto("/login")) and let the Playwright config's baseURL decide where
+   that points; a spec containing "http://localhost:<port>" is wrong even when
+   it passes, because the address changes between machines and runs.
 5. Run the suite with pw.run_tests. Fix what fails and run again. "green" is
    false while anything is skipped, so an unimplemented test blocks the run just
    as a failing one does.

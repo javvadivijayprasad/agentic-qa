@@ -1,9 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveLedgerFile, main, discover, run, type CliIo } from "../src/cli.js";
 import { StubTools } from "../src/runtime/tools.js";
+import { ScriptedModel } from "../src/runtime/model.js";
 
 const FIXTURE_DIR = join(process.cwd(), "examples", "fixture-ledger");
 const tmp = () => mkdtempSync(join(tmpdir(), "aqa-cli-"));
@@ -177,18 +185,109 @@ describe("aqa run --dry-run", () => {
     expect(ft.isClosed()).toBe(true);
   });
 
-  it("without --dry-run says the model adapter is not there yet", async () => {
+  it("without --dry-run, refuses a request with no work item reference", async () => {
     const dir = tmp();
     const cfg = join(dir, "c.json");
-    writeFileSync(cfg, JSON.stringify({ agent: { scope: {} } }));
+    writeFileSync(cfg, JSON.stringify({ agent: { scope: { work_items: ["1"] } } }));
     const { cli, buf } = io();
-    expect(await run(["x", "--config", cfg], cli)).toBe(1);
-    expect(buf.err).toMatch(/only --dry-run/);
+    expect(await run(["do some testing", "--config", cfg, "--env", join(dir, "no.env")], cli)).toBe(
+      1,
+    );
+    expect(buf.err).toMatch(/no work item in the request/);
+  });
+
+  it("without --dry-run, refuses (exit 3) a work item outside scope before spending a token", async () => {
+    const dir = tmp();
+    const cfg = join(dir, "c.json");
+    writeFileSync(cfg, JSON.stringify({ agent: { scope: { work_items: ["1"] } } }));
+    const { cli, buf } = io();
+    const code = await run(
+      ["Write tests for AB#99", "--config", cfg, "--env", join(dir, "no.env")],
+      cli,
+    );
+    expect(code).toBe(3);
+    expect(buf.err).toMatch(/work item 99 is not in agent.scope.work_items/);
   });
 
   it("requires --config and a request", async () => {
     const { cli } = io();
     expect(await run(["--dry-run"], cli)).toBe(1);
     expect(await run(["x", "--dry-run"], cli)).toBe(1);
+  });
+});
+
+describe("aqa run (live path, scripted model)", () => {
+  it("runs the loop end to end: ledger written, verifier decides, exit code reflects it", async () => {
+    const dir = tmp();
+    const cfg = join(dir, "c.json");
+    writeFileSync(
+      cfg,
+      JSON.stringify({
+        agent: {
+          scope: { work_items: ["1"], repos: [], test_plans: [], branches_writable: [] },
+          budgets: { steps: 8, tokens: 10000 },
+        },
+      }),
+    );
+    const tools = new StubTools().add(
+      {
+        server: "ado",
+        name: "wit_work_item",
+        description: "Work items",
+        inputSchema: { type: "object" },
+        policyClass: "read",
+        actionArg: "action",
+        actions: { get: { policyClass: "read", scopeArgs: { workItem: "id" } } },
+      },
+      { ok: true, result: { id: 1, title: "Login" }, artefacts: [] },
+    );
+    const usage = { inputTokens: 10, outputTokens: 5 };
+    const model = new ScriptedModel({
+      plan: { steps: ["read the story"], usage },
+      decisions: [
+        { calls: [{ toolName: "ado.wit_work_item", args: { action: "get", id: "1" } }], usage },
+        { calls: [], note: "done as far as I can get", usage },
+        { calls: [], note: "still nothing more to do", usage },
+      ],
+    });
+    const { cli, buf } = io();
+    const code = await run(
+      [
+        "Write tests for AB#1",
+        "--config",
+        cfg,
+        "--ledger",
+        join(dir, ".aqa"),
+        "--servers",
+        "fs",
+        "--env",
+        join(dir, "no.env"),
+      ],
+      cli,
+      {
+        buildTools: async () => ({ tools, close: async () => {} }),
+        buildModel: () => model,
+      },
+    );
+
+    // The story was read but nothing else was: the verifier refuses to call it done.
+    expect(code).toBe(2);
+    expect(buf.out).toContain("blocked:");
+    expect(buf.out).toMatch(/replay: aqa replay/);
+
+    const runs = readdirSync(join(dir, ".aqa", "runs"));
+    expect(runs).toHaveLength(1);
+    const events = readFileSync(join(dir, ".aqa", "runs", runs[0]!, "events.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as { kind: string; payload: Record<string, unknown> });
+    expect(events[0]!.kind).toBe("request");
+    expect(events.at(-1)!.kind).toBe("end");
+    expect(events.some((e) => e.kind === "call")).toBe(true);
+    const verify = events.filter((e) => e.kind === "verify");
+    expect(verify.length).toBeGreaterThan(0);
+    expect((verify[0]!.payload as { done: boolean }).done).toBe(false);
+    // the model's claim of being finished is recorded, but did not decide the outcome
+    expect(JSON.stringify(events)).toContain("done as far as I can get");
   });
 });

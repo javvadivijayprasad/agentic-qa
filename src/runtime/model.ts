@@ -32,6 +32,12 @@ export interface HistoryItem {
   ledgerRef: string;
   /** Present when the gate refused or an approval was denied — the model must adapt. */
   gate?: { decision: "refuse" | "denied"; reason: string };
+  /**
+   * Set by context assembly on observations it treats as primary sources, so a
+   * model adapter can present them under their own heading rather than
+   * guessing from position (A7).
+   */
+  source?: boolean;
 }
 
 export interface ModelInput {

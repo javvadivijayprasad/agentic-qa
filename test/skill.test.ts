@@ -44,6 +44,7 @@ describe("story-to-tests skill", () => {
       "zero failures AND zero skipped",
       "testsWorkItemId = 1",
       "added to a test suite",
+      "Never hard-code the application's address",
     ]) {
       expect(text).toContain(phrase);
     }

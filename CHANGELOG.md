@@ -130,3 +130,27 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
   a plateau while history grows, which is the shape the run page should render.
 - Fixture regenerated (still 42 events) with `sourceTools` declared.
 - Tests: 177.
+
+### Added (A7 — Anthropic model adapter, live runs)
+- `src/runtime/anthropic.ts`: `AnthropicModel` over the Messages API. Tool descriptors become
+  tool-use definitions; the qualified name `ado.wit_work_item` is mapped to `ado__wit_work_item`
+  because the API only accepts `^[a-zA-Z0-9_-]{1,128}$`, and mapped back on the way in, so the
+  ledger keeps the qualified name. Each tool's description states its governance class and, for
+  multiplexed tools, exactly which `action` values are permitted — the model learns the boundary
+  from the tool definition instead of by being refused. A tool name the model invents is dropped
+  with a warning rather than passed to the gate.
+- `RUNTIME_SYSTEM`: the runtime's own instructions (what a cycle is, what the gate does to a call,
+  that the verifier decides done), sent ahead of the skill's. The adapter deliberately does NOT
+  keep an API-side conversation with tool_result turns: every cycle is a fresh request assembled
+  from the ledger, which is what keeps a run replayable.
+- `scrub()` is applied to the system prompt and every message before it leaves the process, and to
+  adapter warnings on stderr.
+- `aqa run` without `--dry-run` now runs: `--work-item` (or "AB#1" parsed from the request), scope
+  checked before a token is spent (out-of-scope exits 3), ledger under `--ledger`, `--approval
+  terminal|file`, and the loop's status as the exit code. `ToolingDeps.buildModel` injects a model
+  for tests.
+- Contract, additive: `InferencePayload.note` records the model's own words when it declares the
+  goal reached, so the ledger shows the claim beside the verifier's verdict.
+- Dependency: `@anthropic-ai/sdk` (lazy-imported; the suite never loads it).
+- Fixture regenerated (42 events; context sections now mark sources, inference records the note).
+- Tests: 196.

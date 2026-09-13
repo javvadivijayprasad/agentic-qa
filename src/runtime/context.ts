@@ -115,7 +115,10 @@ export class OrderedContextBuilder implements ContextBuilder {
     const sources = parts.history.filter(isSource);
     const steps = parts.history.filter((h) => !isSource(h));
 
-    const keptSources = takeWhileUnderCap(sources, this.caps.sources);
+    const keptSources = takeWhileUnderCap(sources, this.caps.sources).map((h) => ({
+      ...h,
+      source: true,
+    }));
     const keptSteps = takeNewestUnderCap(steps, this.caps.history);
     const dropped = sources.length - keptSources.length + (steps.length - keptSteps.length);
 

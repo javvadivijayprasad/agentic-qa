@@ -136,6 +136,7 @@ export async function runLoop(deps: LoopDeps): Promise<LoopResult> {
             toolName: null,
             args: null,
             usage: decision.usage,
+            ...(decision.note ? { note: decision.note } : {}),
           },
           clock.now(),
         );

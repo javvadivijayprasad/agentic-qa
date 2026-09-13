@@ -24,6 +24,26 @@ export type {
   ProposedCall,
   HistoryItem,
 } from "./runtime/model.js";
+export {
+  AnthropicModel,
+  sdkMessagesFactory,
+  wireTools,
+  toWireName,
+  fromWireName,
+  normaliseSchema,
+  parseSteps,
+  renderCycle,
+  RUNTIME_SYSTEM,
+  DEFAULT_MODEL,
+  DEFAULT_PROMPT_VERSION,
+} from "./runtime/anthropic.js";
+export type {
+  AnthropicModelOptions,
+  MessagesApi,
+  MessagesFactory,
+  MessageRequest,
+  MessageResponse,
+} from "./runtime/anthropic.js";
 export { StubTools, qualify, splitQualified } from "./runtime/tools.js";
 export type {
   ToolClient,

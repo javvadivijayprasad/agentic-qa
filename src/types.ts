@@ -74,6 +74,12 @@ export interface InferencePayload {
   /** `null` when the model declared the goal reached instead of choosing a tool. */
   toolName: string | null;
   args: Record<string, unknown> | null;
+  /**
+   * The model's own words when it declared the goal reached (A7, additive and
+   * optional). Recorded so the ledger shows the CLAIM next to the verifier's
+   * verdict — the two disagreeing is the most informative thing in a failed run.
+   */
+  note?: string;
   usage: { inputTokens: number; outputTokens: number };
 }
 
