@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-09-12T21:33:03.773Z",
+  "generatedAt": "2026-09-13T00:16:11.745Z",
   "servers": [
     {
       "name": "ado",
       "command": "npx.cmd",
       "args": [
         "-y",
-        "@azure-devops/mcp@latest",
+        "@azure-devops/mcp@2.10.0",
         "jvijayprasad"
       ],
       "toolCount": 40
@@ -16,7 +16,7 @@
       "command": "npx.cmd",
       "args": [
         "-y",
-        "@playwright/mcp@latest",
+        "@playwright/mcp@0.0.80",
         "--headless"
       ],
       "toolCount": 24
@@ -26,6 +26,18 @@
       "command": "(in-process)",
       "args": [],
       "toolCount": 3
+    },
+    {
+      "name": "bdd2pw",
+      "command": "(in-process)",
+      "args": [],
+      "toolCount": 2
+    },
+    {
+      "name": "pw",
+      "command": "(in-process)",
+      "args": [],
+      "toolCount": 2
     }
   ],
   "tools": [
@@ -1001,8 +1013,8 @@
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "write_branch",
+      "classified": true
     },
     {
       "qualified": "ado.repo_file",
@@ -1930,8 +1942,8 @@
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "read",
+      "classified": true
     },
     {
       "qualified": "ado.testplan_show_test_results_from_build_id",
@@ -2025,8 +2037,8 @@
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "write_record",
+      "classified": true
     },
     {
       "qualified": "ado.testplan_test_plan_write",
@@ -2079,8 +2091,8 @@
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "write_record",
+      "classified": true
     },
     {
       "qualified": "ado.testplan_test_suite_write",
@@ -2143,8 +2155,8 @@
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "write_record",
+      "classified": true
     },
     {
       "qualified": "ado.wiki",
@@ -2419,8 +2431,8 @@
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "read",
+      "classified": true
     },
     {
       "qualified": "ado.wit_work_item",
@@ -2528,8 +2540,8 @@
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "read",
+      "classified": true
     },
     {
       "qualified": "ado.wit_work_item_attachment",
@@ -2615,8 +2627,8 @@
         "additionalProperties": false,
         "$schema": "http://json-schema.org/draft-07/schema#"
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "write_record",
+      "classified": true
     },
     {
       "qualified": "ado.wit_work_item_link_write",
@@ -3212,6 +3224,50 @@
       "classified": false
     },
     {
+      "qualified": "bdd2pw.parse",
+      "server": "bdd2pw",
+      "name": "parse",
+      "description": "Parse a Gherkin .feature file in the workspace into { feature, background, scenarios[] }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Feature file, workspace-relative"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "policyClass": "read",
+      "classified": true
+    },
+    {
+      "qualified": "bdd2pw.to_spec",
+      "server": "bdd2pw",
+      "name": "to_spec",
+      "description": "Generate a Playwright spec skeleton from a Gherkin feature file. Each scenario becomes a test whose steps are test.step() calls marked TODO; the test is marked fixme so an unimplemented skeleton can never report a pass.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Feature file, workspace-relative"
+          },
+          "out": {
+            "type": "string",
+            "description": "Spec file to write; defaults to tests/<feature>.spec.ts"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "policyClass": "write_workspace",
+      "classified": true
+    },
+    {
       "qualified": "fs.list_dir",
       "server": "fs",
       "name": "list_dir",
@@ -3374,8 +3430,8 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "read",
+      "classified": true
     },
     {
       "qualified": "playwright.browser_drag",
@@ -3592,8 +3648,8 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "read",
+      "classified": true
     },
     {
       "qualified": "playwright.browser_handle_dialog",
@@ -3718,8 +3774,8 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "read",
+      "classified": true
     },
     {
       "qualified": "playwright.browser_network_requests",
@@ -3749,8 +3805,8 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "read",
+      "classified": true
     },
     {
       "qualified": "playwright.browser_press_key",
@@ -3886,8 +3942,8 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "read",
+      "classified": true
     },
     {
       "qualified": "playwright.browser_tabs",
@@ -3974,8 +4030,8 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
-      "policyClass": "destructive",
-      "classified": false
+      "policyClass": "write_workspace",
+      "classified": true
     },
     {
       "qualified": "playwright.browser_type",
@@ -4042,6 +4098,44 @@
       },
       "policyClass": "destructive",
       "classified": false
+    },
+    {
+      "qualified": "pw.list_tests",
+      "server": "pw",
+      "name": "list_tests",
+      "description": "List the tests Playwright would run, without running them.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "spec": {
+            "type": "string",
+            "description": "Spec file or directory, workspace-relative. Omit to run the whole suite."
+          }
+        }
+      },
+      "policyClass": "read",
+      "classified": true
+    },
+    {
+      "qualified": "pw.run_tests",
+      "server": "pw",
+      "name": "run_tests",
+      "description": "Run the Playwright suite and return { passed, failed, skipped, flaky, green, failures[] }. Skipped counts unimplemented (fixme) tests, and any skipped test keeps green false.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "spec": {
+            "type": "string",
+            "description": "Spec file or directory, workspace-relative. Omit to run the whole suite."
+          },
+          "grep": {
+            "type": "string",
+            "description": "Only run tests whose title matches this."
+          }
+        }
+      },
+      "policyClass": "write_workspace",
+      "classified": true
     }
   ]
 }

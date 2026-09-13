@@ -14,6 +14,14 @@ import { DEFAULT_POLICY, type ScopeConfig } from "../src/types.js";
 
 const OBSERVED = join(process.cwd(), "docs", "tools-observed.json");
 
+/**
+ * The recorded report also contains the in-process adapters (fs, bdd2pw, pw),
+ * which classify themselves in trusted code. What is under test here is the
+ * MCP SERVER surface — the tools a third party exposes to us — so only those
+ * two servers are rebuilt.
+ */
+const MCP_SERVERS = ["ado", "playwright"];
+
 describe("governance manifest", () => {
   it("declares the worst case of its own actions as the tool class", () => {
     for (const [name, entry] of Object.entries(DEFAULT_MANIFEST)) {
@@ -62,7 +70,7 @@ describe("manifest ↔ observed tools", () => {
     const byName = new Map(report.tools.map((t) => [t.qualified, t]));
     for (const [name, entry] of Object.entries(DEFAULT_MANIFEST)) {
       const server = name.split(".")[0] as string;
-      if (!["ado", "playwright"].includes(server)) continue;
+      if (!MCP_SERVERS.includes(server)) continue;
       const observed = byName.get(name);
       expect(`${name} observed: ${observed !== undefined}`).toBe(`${name} observed: true`);
       const props = (observed?.inputSchema as { properties?: Record<string, unknown> })?.properties;
@@ -108,7 +116,7 @@ describe("in-process adapters agree with the manifest", () => {
   });
 });
 
-describe("the manifest applied to the 67 recorded tools", () => {
+describe("the manifest applied to the recorded MCP tool surface", () => {
   const scope: ScopeConfig = {
     work_items: ["1"],
     repos: [],
@@ -128,7 +136,7 @@ describe("the manifest applied to the 67 recorded tools", () => {
     };
     const byServer = new Map<string, typeof report.tools>();
     for (const t of report.tools) {
-      if (t.server === "fs") continue;
+      if (!MCP_SERVERS.includes(t.server)) continue;
       byServer.set(t.server, [...(byServer.get(t.server) ?? []), t]);
     }
     const specs = [...byServer.keys()].map((name) => ({ name, command: "x", args: [] }));
@@ -140,7 +148,7 @@ describe("the manifest applied to the 67 recorded tools", () => {
     return client.listTools();
   }
 
-  it("admits exactly the slice-1 operations and refuses all 60-odd others", async () => {
+  it("admits exactly the slice-1 operations and refuses the other 50", async () => {
     if (!existsSync(OBSERVED)) return;
     const gate = new ScopedGate(DEFAULT_POLICY, scope);
     const admitted: string[] = [];

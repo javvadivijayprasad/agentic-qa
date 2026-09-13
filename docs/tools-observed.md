@@ -1,18 +1,20 @@
 # Tools observed by `aqa discover`
 
-Generated 2026-09-12T21:33:03.773Z. Recorded from live `listTools()` calls — not from memory.
+Generated 2026-09-13T00:16:11.745Z. Recorded from live `listTools()` calls — not from memory.
 
 ## Servers
 
 | server | command | tools |
 |---|---|---|
-| ado | `npx.cmd -y @azure-devops/mcp@latest jvijayprasad` | 40 |
-| playwright | `npx.cmd -y @playwright/mcp@latest --headless` | 24 |
+| ado | `npx.cmd -y @azure-devops/mcp@2.10.0 jvijayprasad` | 40 |
+| playwright | `npx.cmd -y @playwright/mcp@0.0.80 --headless` | 24 |
 | fs | `(in-process) ` | 3 |
+| bdd2pw | `(in-process) ` | 2 |
+| pw | `(in-process) ` | 2 |
 
 ## Tools
 
-67 tools; 64 not yet in the governance manifest (treated as destructive → refused until classified in A5).
+71 tools; 50 not yet in the governance manifest (treated as destructive → refused until classified in A5).
 
 | tool | class | in manifest | description |
 |---|---|---|---|
@@ -28,7 +30,7 @@ Generated 2026-09-12T21:33:03.773Z. Recorded from live `listTools()` calls — n
 | `ado.pipelines_run` | destructive | **no** | Retrieve pipeline run data for a project. Use the action parameter to specify the operation. |
 | `ado.pipelines_write` | destructive | **no** | Write operations for pipelines and builds. Use the action parameter to specify the operation. |
 | `ado.repo_branch` | destructive | **no** | Retrieve branch data for a repository. Use the action parameter to specify the operation. |
-| `ado.repo_create_branch` | destructive | **no** | Create a new branch in the repository. |
+| `ado.repo_create_branch` | write_branch | yes | Create a new branch in the repository. |
 | `ado.repo_file` | destructive | **no** | Retrieve file data from a repository. Use the action parameter to specify the operation. |
 | `ado.repo_pull_request` | destructive | **no** | Retrieve pull request data. Use the action parameter to specify the operation. |
 | `ado.repo_pull_request_thread` | destructive | **no** | Retrieve pull request thread and comment data. Use the action parameter to specify the operation. |
@@ -39,50 +41,54 @@ Generated 2026-09-12T21:33:03.773Z. Recorded from live `listTools()` calls — n
 | `ado.search_code` | destructive | **no** | Search Azure DevOps Repositories for a given search text |
 | `ado.search_wiki` | destructive | **no** | Search Azure DevOps Wiki for a given search text |
 | `ado.search_workitem` | destructive | **no** | Get Azure DevOps Work Item search results for a given search text |
-| `ado.testplan` | destructive | **no** | Retrieve paginated test plan, suite, and case data for a project. Use the action parameter to specify the operation. When a response includes a continuationToke |
+| `ado.testplan` | read | yes | Retrieve paginated test plan, suite, and case data for a project. Use the action parameter to specify the operation. When a response includes a continuationToke |
 | `ado.testplan_show_test_results_from_build_id` | destructive | **no** | Gets a list of test results for a given project and build ID. Can filter by test outcome (e.g. Failed, Passed, Aborted). Returns test case titles, error message |
-| `ado.testplan_test_case_write` | destructive | **no** | Write operations for test cases. Use the action parameter to specify the operation. |
-| `ado.testplan_test_plan_write` | destructive | **no** | Write operations for test plans. Use the action parameter to specify the operation. |
-| `ado.testplan_test_suite_write` | destructive | **no** | Write operations for test suites. Use the action parameter to specify the operation. |
+| `ado.testplan_test_case_write` | write_record | yes | Write operations for test cases. Use the action parameter to specify the operation. |
+| `ado.testplan_test_plan_write` | write_record | yes | Write operations for test plans. Use the action parameter to specify the operation. |
+| `ado.testplan_test_suite_write` | write_record | yes | Write operations for test suites. Use the action parameter to specify the operation. |
 | `ado.wiki` | destructive | **no** | Retrieve wiki data for an organization or project. Use the action parameter to specify the operation. |
 | `ado.wiki_upsert_page` | destructive | **no** | Create or update a wiki page with content. |
 | `ado.wit_backlog` | destructive | **no** | Retrieve backlog data for a project and team. Use the action parameter to specify the operation. |
-| `ado.wit_query` | destructive | **no** | Retrieve work item query data for a project. Use the action parameter to specify the operation. |
-| `ado.wit_work_item` | destructive | **no** | Retrieve work item data for a project. Use the action parameter to specify the operation. |
+| `ado.wit_query` | read | yes | Retrieve work item query data for a project. Use the action parameter to specify the operation. |
+| `ado.wit_work_item` | read | yes | Retrieve work item data for a project. Use the action parameter to specify the operation. |
 | `ado.wit_work_item_attachment` | destructive | **no** | Download a work item attachment by its ID. By default returns the content as a base64-encoded resource. If savePath is provided, saves the file locally to that  |
-| `ado.wit_work_item_comment_write` | destructive | **no** | Write operations for work item comments. Use the action parameter to specify the operation. |
+| `ado.wit_work_item_comment_write` | write_record | yes | Write operations for work item comments. Use the action parameter to specify the operation. |
 | `ado.wit_work_item_link_write` | destructive | **no** | Write operations for work item links. Use the action parameter to specify the operation. |
 | `ado.wit_work_item_write` | destructive | **no** | Write operations for work items. Use the action parameter to specify the operation. |
 | `ado.work` | destructive | **no** | Retrieve work-related data for a project or team. Use the action parameter to specify the operation. |
 | `ado.work_capacity_write` | destructive | **no** | Update the team capacity of a team member for a specific iteration in a project. |
 | `ado.work_iteration_write` | destructive | **no** | Create or assign iterations in an Azure DevOps project. Use the action parameter to specify the operation. |
+| `bdd2pw.parse` | read | yes | Parse a Gherkin .feature file in the workspace into { feature, background, scenarios[] }. |
+| `bdd2pw.to_spec` | write_workspace | yes | Generate a Playwright spec skeleton from a Gherkin feature file. Each scenario becomes a test whose steps are test.step() calls marked TODO; the test is marked  |
 | `fs.list_dir` | read | yes | List files and directories inside the workspace. |
 | `fs.read_file` | read | yes | Read a UTF-8 text file inside the workspace (max 200 KB). |
 | `fs.write_file` | write_workspace | yes | Write a UTF-8 text file inside the workspace, creating directories as needed. |
 | `playwright.browser_click` | destructive | **no** | Perform click on a web page |
 | `playwright.browser_close` | destructive | **no** | Close the page |
-| `playwright.browser_console_messages` | destructive | **no** | Returns all console messages |
+| `playwright.browser_console_messages` | read | yes | Returns all console messages |
 | `playwright.browser_drag` | destructive | **no** | Perform drag and drop between two elements |
 | `playwright.browser_drop` | destructive | **no** | Drop files or MIME-typed data onto an element, as if dragged from outside the page. At least one of "paths" or "data" must be provided. |
 | `playwright.browser_evaluate` | destructive | **no** | Evaluate JavaScript expression on page or element |
 | `playwright.browser_file_upload` | destructive | **no** | Upload one or multiple files |
 | `playwright.browser_fill_form` | destructive | **no** | Fill multiple form fields |
-| `playwright.browser_find` | destructive | **no** | Search the accessibility snapshot of the current page for text or a regular expression. Returns matching snapshot nodes with a few lines of surrounding context  |
+| `playwright.browser_find` | read | yes | Search the accessibility snapshot of the current page for text or a regular expression. Returns matching snapshot nodes with a few lines of surrounding context  |
 | `playwright.browser_handle_dialog` | destructive | **no** | Handle a dialog |
 | `playwright.browser_hover` | destructive | **no** | Hover over element on page |
 | `playwright.browser_navigate` | destructive | **no** | Navigate to a URL |
 | `playwright.browser_navigate_back` | destructive | **no** | Go back to the previous page in the history |
-| `playwright.browser_network_request` | destructive | **no** | Returns full details (headers and body) of a single network request, or a single part if `part` is set. Use the number from browser_network_requests. |
-| `playwright.browser_network_requests` | destructive | **no** | Returns a numbered list of network requests since loading the page. Use browser_network_request with the number to get full details. |
+| `playwright.browser_network_request` | read | yes | Returns full details (headers and body) of a single network request, or a single part if `part` is set. Use the number from browser_network_requests. |
+| `playwright.browser_network_requests` | read | yes | Returns a numbered list of network requests since loading the page. Use browser_network_request with the number to get full details. |
 | `playwright.browser_press_key` | destructive | **no** | Press a key on the keyboard |
 | `playwright.browser_resize` | destructive | **no** | Resize the browser window |
 | `playwright.browser_run_code_unsafe` | destructive | **no** | Run a Playwright code snippet. Unsafe: executes arbitrary JavaScript in the Playwright server process and is RCE-equivalent. |
 | `playwright.browser_select_option` | destructive | **no** | Select an option in a dropdown |
-| `playwright.browser_snapshot` | destructive | **no** | Capture accessibility snapshot of the current page, this is better than screenshot |
+| `playwright.browser_snapshot` | read | yes | Capture accessibility snapshot of the current page, this is better than screenshot |
 | `playwright.browser_tabs` | destructive | **no** | List, create, close, or select a browser tab. |
-| `playwright.browser_take_screenshot` | destructive | **no** | Take a screenshot of the current page. You can't perform actions based on the screenshot, use browser_snapshot for actions. |
+| `playwright.browser_take_screenshot` | write_workspace | yes | Take a screenshot of the current page. You can't perform actions based on the screenshot, use browser_snapshot for actions. |
 | `playwright.browser_type` | destructive | **no** | Type text into editable element |
 | `playwright.browser_wait_for` | destructive | **no** | Wait for text to appear or disappear or a specified time to pass |
+| `pw.list_tests` | read | yes | List the tests Playwright would run, without running them. |
+| `pw.run_tests` | write_workspace | yes | Run the Playwright suite and return { passed, failed, skipped, flaky, green, failures[] }. Skipped counts unimplemented (fixme) tests, and any skipped test keep |
 
 ## Schemas
 
@@ -3228,6 +3234,48 @@ Create or assign iterations in an Azure DevOps project. Use the action parameter
 }
 ```
 
+### `bdd2pw.parse`
+
+Parse a Gherkin .feature file in the workspace into { feature, background, scenarios[] }.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Feature file, workspace-relative"
+    }
+  },
+  "required": [
+    "path"
+  ]
+}
+```
+
+### `bdd2pw.to_spec`
+
+Generate a Playwright spec skeleton from a Gherkin feature file. Each scenario becomes a test whose steps are test.step() calls marked TODO; the test is marked fixme so an unimplemented skeleton can never report a pass.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Feature file, workspace-relative"
+    },
+    "out": {
+      "type": "string",
+      "description": "Spec file to write; defaults to tests/<feature>.spec.ts"
+    }
+  },
+  "required": [
+    "path"
+  ]
+}
+```
+
 ### `fs.list_dir`
 
 List files and directories inside the workspace.
@@ -4030,5 +4078,41 @@ Wait for text to appear or disappear or a specified time to pass
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false
+}
+```
+
+### `pw.list_tests`
+
+List the tests Playwright would run, without running them.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "spec": {
+      "type": "string",
+      "description": "Spec file or directory, workspace-relative. Omit to run the whole suite."
+    }
+  }
+}
+```
+
+### `pw.run_tests`
+
+Run the Playwright suite and return { passed, failed, skipped, flaky, green, failures[] }. Skipped counts unimplemented (fixme) tests, and any skipped test keeps green false.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "spec": {
+      "type": "string",
+      "description": "Spec file or directory, workspace-relative. Omit to run the whole suite."
+    },
+    "grep": {
+      "type": "string",
+      "description": "Only run tests whose title matches this."
+    }
+  }
 }
 ```
