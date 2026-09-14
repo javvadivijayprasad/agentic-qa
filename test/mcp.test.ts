@@ -13,7 +13,7 @@ import {
 import { FsTools } from "../src/mcp/adapters/fs.js";
 import { buildReport, renderReportMarkdown } from "../src/mcp/discover.js";
 import { DEFAULT_MANIFEST, classify, type Manifest } from "../src/mcp/manifest.js";
-import { azureDevOpsServer, playwrightServer } from "../src/mcp/servers.js";
+import { azureDevOpsServer, playwrightServer, originsOf } from "../src/mcp/servers.js";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "aqa-mcp-"));
 
@@ -212,8 +212,13 @@ describe("server specs", () => {
     expect(spec.name).toBe("ado");
     expect(spec.args.join(" ")).toContain("@azure-devops/mcp");
     expect(spec.args).toContain("jvijayprasad");
+    // the documented headless method: a PAT from ADO_MCP_AUTH_TOKEN. Without
+    // this flag the server defaults to interactive OAuth and opens a browser.
+    expect(spec.args.join(" ")).toContain("--authentication envvar");
     expect(spec.args.join(" ")).not.toContain("SECRETPAT");
-    expect(spec.env?.["AZURE_DEVOPS_PAT"]).toBe("SECRETPAT");
+    expect(spec.env?.["ADO_MCP_AUTH_TOKEN"]).toBe("SECRETPAT");
+    // nothing else carries the token
+    expect(Object.entries(spec.env ?? {}).filter(([, v]) => v === "SECRETPAT").length).toBe(1);
   });
   it("playwright spec is headless by default", () => {
     expect(playwrightServer().args).toContain("--headless");
@@ -252,5 +257,29 @@ describe("discovery report", () => {
     const f = join(tmp(), "r.json");
     writeFileSync(f, JSON.stringify(report));
     expect(JSON.parse(readFileSync(f, "utf8")).tools).toHaveLength(2);
+  });
+});
+
+describe("playwright server options (A8)", () => {
+  it("passes scope urls as origins, isolated and headless by default", () => {
+    const spec = playwrightServer({
+      allowedOrigins: ["http://localhost:3100", "https://staging.example.com/app"],
+    });
+    expect(spec.args).toContain("--headless");
+    expect(spec.args).toContain("--isolated");
+    const i = spec.args.indexOf("--allowed-origins");
+    expect(spec.args[i + 1]).toBe("http://localhost:3100;https://staging.example.com");
+  });
+
+  it("omits the flag when the allow-list is empty or wildcarded", () => {
+    expect(playwrightServer().args).not.toContain("--allowed-origins");
+    expect(playwrightServer({ allowedOrigins: ["*"] }).args).not.toContain("--allowed-origins");
+    expect(originsOf(["*", "https://*.example.com", "nonsense"])).toEqual([]);
+  });
+
+  it("reduces entries to bare origins and de-duplicates", () => {
+    expect(originsOf(["http://localhost:3100/a", "http://localhost:3100/b"])).toEqual([
+      "http://localhost:3100",
+    ]);
   });
 });

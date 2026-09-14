@@ -330,3 +330,22 @@ describe("createdCaseIds / parseWorkItemRef", () => {
     expect(parseWorkItemRef("no reference here")).toBeUndefined();
   });
 });
+
+describe("a skipped check is recorded, not silently dropped", () => {
+  it("names the missing capability when suite membership is not required", async () => {
+    const v = await new StoryToTestsVerifier({
+      workItem: "1",
+      requireSuiteMembership: false,
+    }).verify({ events: [], workspaceDir: "/tmp" });
+    expect(v.limitations?.[0]).toMatch(/suite membership was not checked/);
+    expect(v.limitations?.[0]).toMatch(/capabilities\.test_plans/);
+  });
+
+  it("has no limitations to report when every check was made", async () => {
+    const v = await new StoryToTestsVerifier({ workItem: "1" }).verify({
+      events: [],
+      workspaceDir: "/tmp",
+    });
+    expect(v.limitations).toBeUndefined();
+  });
+});

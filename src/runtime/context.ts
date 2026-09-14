@@ -18,6 +18,7 @@ export interface ContextBuilder {
     tools: ToolDescriptor[];
     history: HistoryItem[];
     gaps?: string[];
+    notes?: string[];
   }): { input: ModelInput; event: ContextPayload };
 }
 
@@ -33,6 +34,7 @@ export class BasicContextBuilder implements ContextBuilder {
     tools: ToolDescriptor[];
     history: HistoryItem[];
     gaps?: string[];
+    notes?: string[];
   }) {
     const input: ModelInput = {
       request: parts.request,
@@ -41,6 +43,7 @@ export class BasicContextBuilder implements ContextBuilder {
       history: parts.history,
     };
     if (parts.gaps && parts.gaps.length > 0) input.gaps = parts.gaps;
+    if (parts.notes && parts.notes.length > 0) input.notes = parts.notes;
 
     const sectionText: Array<[string, string]> = [
       ["instructions", parts.skillInstructions],
@@ -71,6 +74,9 @@ export interface ContextCaps {
 }
 
 export const DEFAULT_CAPS: ContextCaps = { sources: 60_000, history: 40_000 };
+
+/** How many of the model's own recent notes are carried forward. */
+export const NOTE_WINDOW = 4;
 
 export interface OrderedContextOptions {
   /**
@@ -110,9 +116,13 @@ export class OrderedContextBuilder implements ContextBuilder {
     tools: ToolDescriptor[];
     history: HistoryItem[];
     gaps?: string[];
+    notes?: string[];
   }) {
     const isSource = (h: HistoryItem): boolean => this.sourceTools.has(h.toolName) && h.ok;
-    const sources = parts.history.filter(isSource);
+    // The same file read twice is one source, not two. Without this, a model
+    // that repeats a read pays for the content again every cycle and crowds out
+    // everything else.
+    const sources = dedupe(parts.history.filter(isSource));
     const steps = parts.history.filter((h) => !isSource(h));
 
     const keptSources = takeWhileUnderCap(sources, this.caps.sources).map((h) => ({
@@ -129,6 +139,9 @@ export class OrderedContextBuilder implements ContextBuilder {
       history: [...keptSources, ...keptSteps],
     };
     if (parts.gaps && parts.gaps.length > 0) input.gaps = parts.gaps;
+    // Only the most recent few: older reasoning is superseded by what actually
+    // happened, which is already in the history.
+    if (parts.notes && parts.notes.length > 0) input.notes = parts.notes.slice(-NOTE_WINDOW);
 
     const sectionText: Array<[string, string, number?]> = [
       ["instructions", parts.skillInstructions],
@@ -137,6 +150,7 @@ export class OrderedContextBuilder implements ContextBuilder {
       ["sources", JSON.stringify(keptSources), sources.length - keptSources.length],
       ["history", JSON.stringify(keptSteps), steps.length - keptSteps.length],
     ];
+    if (input.notes) sectionText.push(["notes", JSON.stringify(input.notes)]);
     if (input.gaps) sectionText.push(["gaps", JSON.stringify(input.gaps)]);
 
     const sections = sectionText.map(([name, text, drop]) => ({
@@ -154,6 +168,17 @@ export class OrderedContextBuilder implements ContextBuilder {
       } as ContextPayload,
     };
   }
+}
+
+/** Drop later items identical in tool and content, keeping the first. */
+function dedupe(items: HistoryItem[]): HistoryItem[] {
+  const seen = new Set<string>();
+  return items.filter((h) => {
+    const key = `${h.toolName}\u0000${h.summary}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function itemTokens(h: HistoryItem): number {
@@ -196,9 +221,32 @@ function takeNewestUnderCap(items: HistoryItem[], cap: number): HistoryItem[] {
   return items.filter((h) => keep.has(h));
 }
 
-/** Compact a tool result into the one line the model sees next cycle. */
-export function compactResult(result: unknown, max = 400): string {
+/**
+ * How much of an observation the model gets to see.
+ *
+ * These are deliberately generous. A2 used 400 characters for everything,
+ * which is fine for "4 passed, 1 failed" and catastrophic for a work item: an
+ * Azure DevOps response spends its first few hundred characters on a content
+ * banner and system fields, so the acceptance criteria — the whole point of
+ * the call — fell outside the window. The agent then re-read the same work
+ * item until a stop rule killed the run, and said so in its notes each time.
+ * Aggregate size is controlled by the context caps, which trim whole items;
+ * this only decides how much of ONE observation survives.
+ */
+export const SOURCE_CHARS = 16_000;
+export const STEP_CHARS = 2_000;
+
+/**
+ * Compact a tool result for the model. When something IS cut, say so and give
+ * the true size, so the model can tell the difference between "this is all
+ * there is" and "there is more, but not for you" — the second is a reason to
+ * ask differently, never a reason to ask again.
+ */
+export function compactResult(result: unknown, max = STEP_CHARS): string {
   const text = typeof result === "string" ? result : JSON.stringify(result);
   if (text === undefined) return "";
-  return text.length > max ? text.slice(0, max - 1) + "…" : text;
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}\n…[truncated: ${text.length} characters total, ${
+    text.length - max
+  } not shown. Re-reading returns the same truncation — narrow the request instead.]`;
 }

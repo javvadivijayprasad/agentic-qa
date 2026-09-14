@@ -278,9 +278,20 @@ describe("renderCycle", () => {
     expect(text).toContain("suite-not-green: 6 skipped");
   });
 
-  it("always ends by asking for the next action", () => {
-    expect(renderCycle(input()).trimEnd()).toMatch(
-      /no tool calls if you believe the goal is reached\.$/,
+  it("always ends by asking for the next action, and warns against re-reading", () => {
+    const text = renderCycle(input()).trimEnd();
+    expect(text).toMatch(/Choose the next action\./);
+    expect(text).toMatch(/Re-reading something already shown above changes nothing/);
+  });
+
+  it("feeds the model its own earlier reasoning back", () => {
+    const text = renderCycle(
+      input({ notes: ["I will generate the spec next.", "Now I implement the steps."] }),
     );
+    expect(text).toContain("# What you said in earlier cycles");
+    expect(text).toContain("- I will generate the spec next.");
+    expect(text).toContain("- Now I implement the steps.");
+    // ordering: notes come after the history, before the call to act
+    expect(text.indexOf("# What you said in earlier cycles")).toBeLessThan(text.indexOf("# Now"));
   });
 });

@@ -115,6 +115,14 @@ describe("loadDotEnv", () => {
     expect(loaded.sort()).toEqual(["A", "B", "C"]);
     expect(env).toEqual({ EXISTING: "old", A: "1", B: "two words", C: "x" });
   });
+  it("fills in a defined-but-EMPTY ambient variable, which would otherwise shadow the file", () => {
+    const f = join(tmp(), ".env");
+    writeFileSync(f, "ANTHROPIC_API_KEY=sk-ant-real\nOTHER=x\n");
+    const env: NodeJS.ProcessEnv = { ANTHROPIC_API_KEY: "" };
+    expect(loadDotEnv(f, env).sort()).toEqual(["ANTHROPIC_API_KEY", "OTHER"]);
+    expect(env["ANTHROPIC_API_KEY"]).toBe("sk-ant-real");
+  });
+
   it("returns [] when the file is absent", () => {
     expect(loadDotEnv(join(tmp(), "nope"), {})).toEqual([]);
   });
@@ -157,5 +165,27 @@ describe("orgNameFromUrl", () => {
     expect(orgNameFromUrl("https://myorg.visualstudio.com")).toBe("myorg");
     expect(() => orgNameFromUrl("https://dev.azure.com/")).toThrow(/no organisation segment/);
     expect(() => orgNameFromUrl("https://example.com/x")).toThrow(/not a recognised/);
+  });
+});
+
+describe("agent.capabilities", () => {
+  it("defaults to the environment being fully capable", () => {
+    expect(agentConfigFromObject(good).capabilities).toEqual({ test_plans: true });
+  });
+
+  it("turns off test plans when the account has no Test Plans access level", () => {
+    const c = agentConfigFromObject({
+      agent: { ...good.agent, capabilities: { test_plans: false } },
+    });
+    expect(c.capabilities.test_plans).toBe(false);
+  });
+
+  it("rejects a non-boolean and an unknown capability", () => {
+    expect(() =>
+      agentConfigFromObject({ agent: { ...good.agent, capabilities: { test_plans: "no" } } }),
+    ).toThrow(/must be true or false/);
+    expect(() =>
+      agentConfigFromObject({ agent: { ...good.agent, capabilities: { nope: true } } }),
+    ).toThrow(/unknown key/);
   });
 });

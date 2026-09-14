@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ScopedGate, TableGate, matchesAny, raise } from "../src/governance/policy.js";
+import { ScopedGate, TableGate, matchesAny, matchesUrl, raise } from "../src/governance/policy.js";
 import type { ToolDescriptor } from "../src/runtime/tools.js";
 import type { PolicyClass, PolicyDecision, PolicyTable, ScopeConfig } from "../src/types.js";
 import { DEFAULT_POLICY, POLICY_CLASSES } from "../src/types.js";
@@ -9,6 +9,7 @@ const scope: ScopeConfig = {
   repos: ["orders-web"],
   test_plans: ["Sandbox Plan"],
   branches_writable: ["agent/*"],
+  urls: ["http://localhost:3100"],
 };
 
 const tool = (over: Partial<ToolDescriptor>): ToolDescriptor => ({
@@ -327,5 +328,91 @@ describe("ScopedGate: action multiplexing", () => {
     expect(
       t.judge({ toolName: "ado.wit_work_item", args: { action: "reorder" } }, multiplexed).decision,
     ).toBe("refuse");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A8: URL scope. Only navigation carries a URL, so this is where the boundary
+// is enforced — see the note on `matchesUrl` for what it does not cover.
+// ---------------------------------------------------------------------------
+
+describe("matchesUrl", () => {
+  const allowed = ["http://localhost:3100", "https://staging.example.com/app"];
+
+  it("allows any path under an allow-listed origin", () => {
+    expect(matchesUrl("http://localhost:3100", allowed)).toBe(true);
+    expect(matchesUrl("http://localhost:3100/", allowed)).toBe(true);
+    expect(matchesUrl("http://localhost:3100/#/login", allowed)).toBe(true);
+    expect(matchesUrl("http://localhost:3100/rest/user/whoami", allowed)).toBe(true);
+  });
+
+  it("is strict about scheme, host and port — a different port is a different app", () => {
+    expect(matchesUrl("http://localhost:3000/", allowed)).toBe(false);
+    expect(matchesUrl("https://localhost:3100/", allowed)).toBe(false);
+    expect(matchesUrl("http://127.0.0.1:3100/", allowed)).toBe(false);
+  });
+
+  it("cannot be fooled by a prefix that is not an origin", () => {
+    // classic userinfo trick: the real host here is evil.com
+    expect(matchesUrl("http://localhost:3100@evil.com/", allowed)).toBe(false);
+    expect(matchesUrl("http://localhost:3100.evil.com/", allowed)).toBe(false);
+    expect(matchesUrl("https://staging.example.com.evil.com/app", allowed)).toBe(false);
+  });
+
+  it("honours a path prefix, and does not leak to a sibling path", () => {
+    expect(matchesUrl("https://staging.example.com/app", allowed)).toBe(true);
+    expect(matchesUrl("https://staging.example.com/app/login", allowed)).toBe(true);
+    expect(matchesUrl("https://staging.example.com/admin", allowed)).toBe(false);
+    expect(matchesUrl("https://staging.example.com/application", allowed)).toBe(false);
+  });
+
+  it("supports globs, ignores malformed entries, and refuses non-URLs", () => {
+    expect(matchesUrl("https://a.staging.example.com/x", ["https://*.staging.example.com/*"])).toBe(
+      true,
+    );
+    expect(matchesUrl("http://localhost:3100/", ["not a url"])).toBe(false);
+    expect(matchesUrl("javascript:alert(1)", allowed)).toBe(false);
+    expect(matchesUrl("not a url", allowed)).toBe(false);
+  });
+
+  it('honours "*" only in sandbox mode', () => {
+    expect(matchesUrl("https://anything.example.com/", ["*"])).toBe(false);
+    expect(matchesUrl("https://anything.example.com/", ["*"], true)).toBe(true);
+  });
+});
+
+describe("ScopedGate: url scope", () => {
+  const navigate = tool({
+    server: "playwright",
+    name: "browser_navigate",
+    policyClass: "write_workspace",
+    scopeArgs: { url: "url" },
+  });
+  const judge = (s: ScopeConfig, url?: unknown) =>
+    new ScopedGate(DEFAULT_POLICY, s).judge(
+      { toolName: "playwright.browser_navigate", args: url === undefined ? {} : { url } },
+      navigate,
+    );
+
+  it("executes a navigation inside scope and records the url in the reason", () => {
+    const v = judge(scope, "http://localhost:3100/#/login");
+    expect(v.decision).toBe("execute");
+    expect(v.reason).toContain("url http://localhost:3100/#/login in scope");
+  });
+
+  it("refuses a navigation outside scope", () => {
+    const v = judge(scope, "https://example.com/");
+    expect(v.decision).toBe("refuse");
+    expect(v.reason).toMatch(/is not in the allowed urls/);
+  });
+
+  it("refuses, with a plain reason, when the agent may not browse at all", () => {
+    const v = judge({ ...scope, urls: [] }, "http://localhost:3100/");
+    expect(v.decision).toBe("refuse");
+    expect(v.reason).toMatch(/may not browse at all/);
+  });
+
+  it("refuses a navigation with no url rather than guessing", () => {
+    expect(judge(scope).decision).toBe("refuse");
   });
 });

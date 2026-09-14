@@ -5,6 +5,8 @@ import {
   DEFAULT_CAPS,
   compactResult,
   estimateTokens,
+  SOURCE_CHARS,
+  STEP_CHARS,
 } from "../src/runtime/context.js";
 import type { HistoryItem } from "../src/runtime/model.js";
 import type { ToolDescriptor } from "../src/runtime/tools.js";
@@ -109,9 +111,14 @@ describe("OrderedContextBuilder", () => {
   });
 
   it("keeps sources oldest-first up to their own cap, independent of the history cap", () => {
-    const big = "z".repeat(400);
+    // distinct content per item: identical sources are deduped, which is a
+    // different behaviour with its own test below
     const history = Array.from({ length: 6 }, (_, i) =>
-      item({ toolName: "fs.read_file", summary: big, ledgerRef: `source-${i}` }),
+      item({
+        toolName: "fs.read_file",
+        summary: `${i}${"z".repeat(400)}`,
+        ledgerRef: `source-${i}`,
+      }),
     );
     const tight = new OrderedContextBuilder({
       sourceTools: ["fs.read_file"],
@@ -122,6 +129,16 @@ describe("OrderedContextBuilder", () => {
     expect(kept[0]).toBe("source-0"); // the story is read first and kept first
     expect(kept).not.toContain("source-5");
     expect(event.sections.find((s) => s.name === "sources")?.dropped).toBe(6 - kept.length);
+  });
+
+  it("counts a repeated read as ONE source, not many", () => {
+    const twice = [
+      item({ toolName: "fs.read_file", summary: "the same file", ledgerRef: "first" }),
+      item({ toolName: "fs.read_file", summary: "the same file", ledgerRef: "second" }),
+      item({ toolName: "fs.read_file", summary: "a different file", ledgerRef: "third" }),
+    ];
+    const { input } = builder.build(parts(twice));
+    expect(input.history.map((h) => h.ledgerRef)).toEqual(["first", "third"]);
   });
 
   it("never trims tool schemas", () => {
@@ -152,9 +169,24 @@ describe("OrderedContextBuilder", () => {
 });
 
 describe("compactResult", () => {
-  it("truncates long results and passes short ones through", () => {
+  it("passes short results through untouched", () => {
     expect(compactResult({ a: 1 })).toBe('{"a":1}');
-    expect(compactResult("z".repeat(500)).length).toBe(400);
-    expect(compactResult("z".repeat(500)).endsWith("…")).toBe(true);
+    expect(compactResult("z".repeat(STEP_CHARS))).toBe("z".repeat(STEP_CHARS));
+  });
+
+  it("says how much was cut, and that asking again will not help", () => {
+    const out = compactResult("z".repeat(STEP_CHARS + 500));
+    expect(out.startsWith("z".repeat(STEP_CHARS))).toBe(true);
+    expect(out).toContain(`truncated: ${STEP_CHARS + 500} characters total`);
+    expect(out).toContain("500 not shown");
+    expect(out).toContain("Re-reading returns the same truncation");
+  });
+
+  it("gives a primary source room for a real work item", () => {
+    // the failure this encodes: a 5,749-character work item cut to 400 chars of
+    // banner and system fields, so the acceptance criteria never arrived
+    const workItem = "x".repeat(5749);
+    expect(compactResult(workItem, SOURCE_CHARS)).toBe(workItem);
+    expect(compactResult(workItem)).toContain("truncated");
   });
 });

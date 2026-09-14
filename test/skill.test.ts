@@ -45,6 +45,8 @@ describe("story-to-tests skill", () => {
       "testsWorkItemId = 1",
       "added to a test suite",
       "Never hard-code the application's address",
+      'process.env["AQA_APP_USER"]',
+      'process.env["AQA_APP_PASS"]',
     ]) {
       expect(text).toContain(phrase);
     }
@@ -57,5 +59,45 @@ describe("story-to-tests skill", () => {
       Object.values(DEFAULT_MANIFEST).flatMap((e) => Object.keys(e.actions ?? {})),
     );
     expect(mentioned.filter((a) => !admitted.has(a!))).toEqual([]);
+  });
+});
+
+describe("story-to-tests skill: the test plan", () => {
+  it("names the plan it may create, when the config scopes one", () => {
+    const text = storyToTestsInstructions("1", "Sandbox Plan");
+    expect(text).toContain('The plan you may use is named "Sandbox Plan"');
+    // the failure this encodes: a fresh project has no plan, list_plans returns
+    // [], and the agent listed it three times rather than creating one
+    expect(text).toContain("comes back with an empty list: that is not an error");
+    expect(text).toContain('name "Sandbox Plan"');
+  });
+
+  it("refuses to invent one when no plan is in scope", () => {
+    const text = storyToTestsInstructions("1");
+    expect(text).toContain("stop and report that no test plan is in scope");
+    expect(text).not.toContain("The plan you may use is named");
+  });
+});
+
+describe("story-to-tests without the Test Plans access level", () => {
+  const skill = storyToTestsSkill({ workItem: "1", requireSuiteMembership: false });
+
+  it("does not show the model tools the environment cannot perform", () => {
+    expect(skill.allowedTools).not.toContain("ado.testplan");
+    expect(skill.allowedTools).not.toContain("ado.testplan_test_plan_write");
+    expect(skill.allowedTools).not.toContain("ado.testplan_test_suite_write");
+  });
+
+  it("keeps case creation, which is an ordinary work-item write", () => {
+    expect(skill.allowedTools).toContain("ado.testplan_test_case_write");
+  });
+
+  it("says why the suite step is absent instead of leaving it unexplained", () => {
+    expect(skill.instructions).toContain("no Test Plans access level");
+    expect(skill.instructions).not.toContain("6. the cases were added to a test suite.");
+  });
+
+  it("still tells the agent that an authorization failure is final", () => {
+    expect(skill.instructions).toContain("not authorized");
   });
 });

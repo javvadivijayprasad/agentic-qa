@@ -87,10 +87,16 @@ export class PwTools implements ToolClient {
     const spec = args["spec"];
     if (typeof spec === "string" && spec) {
       if (!this.fs.inside(spec)) return fail(`path escapes the workspace: ${spec}`);
+      // On Windows the launcher goes through the command interpreter, so an
+      // argument carrying shell punctuation is refused rather than escaped.
+      if (SHELL_UNSAFE.test(spec)) return fail(`spec path contains unsafe characters: ${spec}`);
       extra.push(spec);
     }
     const grep = args["grep"];
-    if (typeof grep === "string" && grep) extra.push("--grep", grep);
+    if (typeof grep === "string" && grep) {
+      if (SHELL_UNSAFE.test(grep)) return fail(`grep contains unsafe characters: ${grep}`);
+      extra.push("--grep", grep);
+    }
 
     if (name === "list_tests") {
       const r = await this.runner(this.command, [...this.baseArgs, ...extra, "--list"], {
@@ -187,6 +193,9 @@ function firstError(spec: { tests?: Array<{ results?: unknown[] }> }): string {
   }
   return "";
 }
+
+/** Characters that mean something to a command interpreter. */
+const SHELL_UNSAFE = /[&|<>^"'`$;%\r\n]/;
 
 function tail(s: string, max = 2000): string {
   const t = s.trim();

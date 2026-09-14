@@ -1,21 +1,42 @@
 # agentic-qa — fleet-wide agent config (PLAN §0). Copy to your repo root as
 # ai-quality.config.yaml and pass with `aqa run ... --config ai-quality.config.yaml`.
 agent:
-  model: claude-sonnet-4-6            # overridden by AQA_MODEL if set
+  model: claude-sonnet-4-6 # overridden by AQA_MODEL if set
   prompt_version: aqa-prompt-v0.1.0
   budgets:
-    steps: 40                         # AQA_STEP_BUDGET overrides
-    tokens: 400000                    # AQA_TOKEN_BUDGET overrides
+    # A fix → run → fix loop costs roughly 14k tokens per cycle, most of it the
+    # fixed tool schemas. 400k bought about 30 cycles, which ran out mid-repair
+    # with four of five tests already passing; these numbers leave room to
+    # finish. Lower them for a cheap smoke run.
+    steps: 60 # AQA_STEP_BUDGET overrides
+    tokens: 1500000 # AQA_TOKEN_BUDGET overrides
   scope:
-    work_items: ["1"]                 # exact ids or ranges: "100-199"
-    repos: []                         # repo names the agent may write to (none for slice 1)
+    work_items: ["1"] # exact ids or ranges: "100-199"
+    repos: [] # repo names the agent may write to (none for slice 1)
     # Azure Test Plans the agent may create cases/suites in. Entries are matched
     # against the argument as passed, and the Azure DevOps MCP server uses the
     # plan NAME when creating a plan but the numeric planId for suites and
     # cases — so list both once the sandbox plan exists, e.g.
     #   test_plans: ["Sandbox Plan", "3"]
     test_plans: ["Sandbox Plan"]
-    branches_writable: ["agent/*"]    # glob; protected branches are always destructive → refuse
+    branches_writable: ["agent/*"] # glob; protected branches are always destructive → refuse
+    # Where the agent may point a browser. An entry may be an origin (allowing
+    # every path under it), a path prefix, or a glob. Empty means the agent may
+    # not browse at all. Checked on every navigation; a link the agent follows
+    # or a redirect is NOT re-checked, so this scopes mistakes rather than
+    # containing a hostile page.
+    urls: ["http://localhost:3100"] # OWASP Juice Shop, the sandbox app under test
+  # What the ENVIRONMENT can do — not what the agent is allowed to do (policy)
+  # or where it may act (scope).
+  capabilities:
+    # Creating a test CASE is an ordinary work-item write and needs only Basic
+    # access. Creating a test PLAN or SUITE goes through the Test Plans service,
+    # which needs the Test Plans access level — a paid extension. Without it
+    # Azure DevOps answers "You are not authorized to access this API", and no
+    # argument or permission change fixes it. Set false on such an account: the
+    # run then creates cases linked to the story, skips the plan and suite, and
+    # records the omission in the verify event.
+    test_plans: true
   policy:
     read: execute
     write_workspace: execute

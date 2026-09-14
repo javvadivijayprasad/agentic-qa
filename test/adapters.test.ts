@@ -6,7 +6,7 @@ import { Bdd2PwTools, parseFeature, renderSpec } from "../src/mcp/adapters/bdd2p
 import { PwTools, summarise } from "../src/mcp/adapters/pw.js";
 import { TcgTools, type FetchLike } from "../src/mcp/adapters/tcg.js";
 import { SynthdataTools } from "../src/mcp/adapters/synthdata.js";
-import { splitCommand, type CommandRunner } from "../src/mcp/adapters/process.js";
+import { splitCommand, spawnable, type CommandRunner } from "../src/mcp/adapters/process.js";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "aqa-ad-"));
 
@@ -259,5 +259,38 @@ describe("splitCommand", () => {
       args: ["-m", "gen"],
     });
     expect(splitCommand("   ")).toBeUndefined();
+  });
+});
+
+describe("spawnable (Windows batch launchers)", () => {
+  it("routes a .cmd through the command interpreter, arguments still as an array", () => {
+    const saved = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      // Node refuses to spawn .cmd directly since the batch-injection fix, and
+      // returns EINVAL — which is exactly how a real run failed.
+      const s = spawnable("npx.cmd", ["playwright", "test", "--reporter=json"]);
+      expect(s.command.toLowerCase()).toContain("cmd");
+      expect(s.args.slice(0, 4)).toEqual(["/d", "/s", "/c", "npx.cmd"]);
+      expect(s.args).toContain("--reporter=json");
+      // a plain executable is untouched
+      expect(spawnable("node", ["x.js"])).toEqual({ command: "node", args: ["x.js"] });
+    } finally {
+      Object.defineProperty(process, "platform", saved);
+    }
+  });
+
+  it("leaves everything alone off Windows", () => {
+    expect(spawnable("npx", ["playwright"])).toEqual({ command: "npx", args: ["playwright"] });
+  });
+});
+
+describe("pw: unsafe arguments", () => {
+  it("refuses shell punctuation in spec and grep rather than escaping it", async () => {
+    const pw = new PwTools(tmp(), {
+      runner: async () => ({ code: 0, stdout: "{}", stderr: "" }),
+    });
+    expect((await pw.call("pw", "run_tests", { spec: "tests/a.spec.ts & calc" })).ok).toBe(false);
+    expect((await pw.call("pw", "run_tests", { grep: 'AC-1" & del *' })).ok).toBe(false);
   });
 });

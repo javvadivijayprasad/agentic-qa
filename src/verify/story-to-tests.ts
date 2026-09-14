@@ -14,11 +14,23 @@ import {
 export interface StoryToTestsOptions {
   /** The work item the tests are for, e.g. "1". */
   workItem: string;
+  /**
+   * The test plan the run may use, from `agent.scope.test_plans`. The agent is
+   * told to create it when the project has none — a fresh project has no plan,
+   * and without this the run stalls listing an empty list (observed).
+   */
+  testPlan?: string;
   /** Minimum number of test cases that must exist in Azure DevOps. Default 1. */
   minCases?: number;
   /** Require a green Playwright run. Default true. */
   requireGreenSuite?: boolean;
-  /** Require the new cases to be added to a suite. Default true. */
+  /**
+   * Require the new cases to be added to a suite. Default true. Set false from
+   * `agent.capabilities.test_plans` when the Azure DevOps account has no Test
+   * Plans access level: the plan/suite API answers "You are not authorized to
+   * access this API" there, so requiring it fails every run for a reason the
+   * agent cannot act on. The check then becomes a recorded limitation.
+   */
   requireSuiteMembership?: boolean;
 }
 
@@ -41,7 +53,8 @@ export interface StoryToTestsOptions {
  */
 export class StoryToTestsVerifier implements Verifier {
   readonly name = "story-to-tests";
-  private readonly opts: Required<StoryToTestsOptions>;
+  private readonly opts: Omit<Required<StoryToTestsOptions>, "testPlan"> &
+    Pick<StoryToTestsOptions, "testPlan">;
 
   constructor(options: StoryToTestsOptions) {
     this.opts = {
@@ -137,6 +150,7 @@ export class StoryToTestsVerifier implements Verifier {
     }
 
     // 6. the cases are in a suite -------------------------------------------
+    const limitations: string[] = [];
     if (this.opts.requireSuiteMembership && created.length > 0) {
       const suiteWrites = successful(calls, "ado.testplan_test_suite_write");
       if (suiteWrites.length === 0) {
@@ -147,9 +161,19 @@ export class StoryToTestsVerifier implements Verifier {
           }),
         );
       }
+    } else if (!this.opts.requireSuiteMembership) {
+      limitations.push(
+        "suite membership was not checked: agent.capabilities.test_plans is false, so this " +
+          "Azure DevOps account cannot create test plans or suites. The cases exist and are " +
+          "linked to the story, but no suite contains them.",
+      );
     }
 
-    return { done: gaps.length === 0, gaps };
+    return {
+      done: gaps.length === 0,
+      gaps,
+      ...(limitations.length > 0 ? { limitations } : {}),
+    };
   }
 }
 

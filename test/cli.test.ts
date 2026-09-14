@@ -291,3 +291,34 @@ describe("aqa run (live path, scripted model)", () => {
     expect(JSON.stringify(events)).toContain("done as far as I can get");
   });
 });
+
+describe("aqa run: credential provenance", () => {
+  it("says which file the key came from, or that the shell shadowed it", async () => {
+    const dir = tmp();
+    const cfg = join(dir, "c.json");
+    writeFileSync(cfg, JSON.stringify({ agent: { scope: { work_items: ["1"] } } }));
+    const envFile = join(dir, ".env");
+    writeFileSync(envFile, "ANTHROPIC_API_KEY=sk-ant-from-the-file\n");
+    const saved = process.env["ANTHROPIC_API_KEY"];
+
+    // 1. nothing in the shell: the file is used and named
+    delete process.env["ANTHROPIC_API_KEY"];
+    try {
+      const a = io();
+      await run(["Write tests for AB#99", "--config", cfg, "--env", envFile], a.cli);
+      expect(a.buf.err).toContain("1 key(s) loaded");
+      expect(a.buf.err).toContain(`from ${envFile}`);
+      expect(a.buf.err).toContain("sk-a…");
+      expect(a.buf.err).not.toContain("from-the-file");
+
+      // 2. a stale key in the shell wins, and the run says so
+      process.env["ANTHROPIC_API_KEY"] = "sk-ant-stale-shell-key";
+      const b = io();
+      await run(["Write tests for AB#99", "--config", cfg, "--env", envFile], b.cli);
+      expect(b.buf.err).toMatch(/from the shell environment \(NOT .*\.env\)/);
+    } finally {
+      if (saved === undefined) delete process.env["ANTHROPIC_API_KEY"];
+      else process.env["ANTHROPIC_API_KEY"] = saved;
+    }
+  });
+});

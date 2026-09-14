@@ -7,11 +7,13 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
 ## [Unreleased] — 0.1.0-dev.0
 
 ### Added (A0 — scaffold)
+
 - Package scaffold: `@vijaypjavvadi/agentic-qa`, TypeScript strict, tsup (ESM+CJS+d.ts), vitest,
   ESLint flat config, Prettier, MIT, CITATION.cff, SECRETS-CHECKLIST.md, CI matrix (node 18/20 ×
   ubuntu/windows).
 
 ### Added (A1 — types, ledger, replay, fixture)
+
 - `src/types.ts`: contract types — 11 event kinds, 5 policy classes, decisions, run status and exit
   codes, config schema, `Skill` and `Verifier` interfaces.
 - `src/ledger/ledger.ts`: append-only JSONL `Ledger` (flush per event, resume-safe numbering),
@@ -25,6 +27,7 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
 - Tests: 27 (ledger, parser, replay, CLI).
 
 ### Added (A2 — loop with scripted model and stub tools)
+
 - `src/runtime/loop.ts`: plan → act → observe → verify cycle with stop rules (done / blocked /
   refused-fed-back / budget / error), step and token budgets, one batched approval per cycle,
   refused and denied calls fed back to the model as history, `summary.md` written at `end`.
@@ -40,6 +43,7 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
 - Tests: 41.
 
 ### Added (A3 — gate hardening, approvers, scrub)
+
 - `ScopedGate` (design §7): class raised for destructive tool names and protected branches
   (`main`, `master`, `release`, `production`, `prod`); scope allow-list checks on work item, repo,
   test plan and branch arguments declared via `ToolDescriptor.scopeArgs` (exact / numeric range /
@@ -54,6 +58,7 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
 - Tests: 85.
 
 ### Added (A4 — real MCP client, config, discovery)
+
 - `src/config.ts`: `loadAgentConfig` (JSON or YAML `ai-quality.config.yaml`, PLAN §0 schema,
   defaults + clear `ConfigError`s), `loadDotEnv` (never overrides existing env), `readRuntimeEnv`
   (ANTHROPIC_API_KEY, AZURE_DEVOPS_ORG_URL/PAT/PROJECT, AQA_MODEL, AQA_SANDBOX, TCG_URL,
@@ -71,7 +76,7 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
 - `src/mcp/adapters/fs.ts`: workspace-bounded `fs.read_file` / `fs.list_dir` / `fs.write_file`
   (path-escape refused).
 - `aqa discover [--servers ado,playwright,fs] [--out docs/tools-observed.md] [--env .env]
-  [--workspace .]`: connects, lists tools, writes a Markdown + JSON report of real names, schemas
+[--workspace .]`: connects, lists tools, writes a Markdown + JSON report of real names, schemas
   and classification status, closes servers.
 - `aqa run "<request>" --config <file> --dry-run`: loads config + env, connects, prints each tool
   as `class → decision`, makes no model or tool calls. Non-dry-run exits 1 until A7.
@@ -80,6 +85,7 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
 - Tests: 113.
 
 ### Added (A5 — per-action governance, adapters)
+
 - **Per-action classification.** Microsoft's Azure DevOps MCP server multiplexes operations behind
   an `action` argument and mixes reads with writes under one tool name (`wit_backlog` does `list`
   and `reorder`; `wit_work_item_link_write` does `link` and `unlink`). `ToolDescriptor` gained
@@ -107,6 +113,7 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
 - Tests: 144.
 
 ### Added (A6 — skill, verifier, context ordering)
+
 - `src/verify/evidence.ts`: reads the ledger into `CallRecord`s by pairing `call` with
   `observation` events. A call with no observation (refused, denied, or cut short) never appears,
   so a refused write can never be mistaken for a completed one.
@@ -132,6 +139,7 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
 - Tests: 177.
 
 ### Added (A7 — Anthropic model adapter, live runs)
+
 - `src/runtime/anthropic.ts`: `AnthropicModel` over the Messages API. Tool descriptors become
   tool-use definitions; the qualified name `ado.wit_work_item` is mapped to `ado__wit_work_item`
   because the API only accepts `^[a-zA-Z0-9_-]{1,128}$`, and mapped back on the way in, so the
@@ -147,10 +155,91 @@ config schema, ledger event shapes, approval file mode, artefact paths) is a MAJ
   adapter warnings on stderr.
 - `aqa run` without `--dry-run` now runs: `--work-item` (or "AB#1" parsed from the request), scope
   checked before a token is spent (out-of-scope exits 3), ledger under `--ledger`, `--approval
-  terminal|file`, and the loop's status as the exit code. `ToolingDeps.buildModel` injects a model
+terminal|file`, and the loop's status as the exit code. `ToolingDeps.buildModel` injects a model
   for tests.
 - Contract, additive: `InferencePayload.note` records the model's own words when it declares the
   goal reached, so the ledger shows the claim beside the verifier's verdict.
 - Dependency: `@anthropic-ai/sdk` (lazy-imported; the suite never loads it).
 - Fixture regenerated (42 events; context sections now mark sources, inference records the note).
 - Tests: 196.
+
+### Added (A8 part 1 — URL scope, browser tools)
+
+- **Contract change (PLAN §0.3):** `agent.scope.urls` — where the agent may point a browser. An
+  entry may be an origin (allowing every path under it), a path prefix, or a glob; `"*"` only in
+  sandbox mode. Empty means the agent may not browse at all. Existing configs must add the key.
+- `matchesUrl()` matches on the parsed origin plus path, so a differing scheme, host or port is out
+  of scope and a userinfo prefix (`http://localhost:3100@evil.com`) cannot sneak through a string
+  test. `ScopeArgs.url` carries the argument name; `ScopedGate` checks it before the class table.
+- Playwright browser tools classified — **exploration only**. `browser_navigate` (scope-checked),
+  `browser_navigate_back`, `browser_snapshot`, `browser_find`, `browser_wait_for`,
+  `browser_take_screenshot` and the console/network readers are admitted. Everything that OPERATES
+  the page — click, type, fill_form, press_key, select_option, hover, drag, drop, file_upload,
+  handle_dialog — stays unclassified, so the only thing that ever interacts with the application
+  under test is the suite the agent writes. `browser_evaluate` and `browser_run_code_unsafe` are
+  never classified.
+- `playwrightServer()` now passes `--allowed-origins` (derived from `agent.scope.urls`) and
+  `--isolated`. Microsoft states this flag "does not serve as a security boundary and does not
+  affect redirects", so it is a second layer under the gate, not the control. Documented as such.
+- The skill may now explore an SPA: `browser_navigate`/`snapshot`/`find`/`screenshot`/
+  `console_messages` added, `browser_snapshot` declared a primary source (an SPA's selectors live in
+  the DOM, not on disk), and the instructions tell the model to take expected behaviour from the
+  acceptance criteria rather than by trying it in the browser.
+- Known limitation, stated in code and docs: only navigation carries a URL, so a link the agent
+  follows or a redirect is not re-checked by the gate.
+- Fixture regenerated: adding `urls` to the scope changes the config hash recorded in the `request`
+  event. Still 42 events, no shape change.
+- Tests: 209.
+
+### Added (A8 part 2 — first live runs against Azure DevOps and Juice Shop)
+
+Everything here comes from defects observed in real runs, not from review. The ledger of each
+failing run is what diagnosed it; the run ids are cited so the evidence can be re-read.
+
+- **Authorization failures are terminal** (`src/runtime/denials.ts`). A call can fail because the
+  arguments were wrong — retry — or because the environment will not perform that operation for
+  this identity at all, which no argument list fixes. `authorizationFailure()` recognises the
+  second kind from a narrow set of phrases; `operationKey()` identifies the operation (tool plus
+  multiplexed `action`, so `testplan#list_plans` staying open does not depend on
+  `testplan_test_plan_write#create`). The loop closes a refused operation for the rest of the run,
+  refuses it **before** the approval batch is assembled, and tells the model plainly that
+  retrying cannot help. Observed in run `20260914T015933Z-4a2806d0`: Azure DevOps answered "You
+  are not authorized to access this API" four times; the model varied `iteration` and `areaPath`
+  between attempts, so the exact-argument repeat memo never fired and the reviewer was asked to
+  approve the same dead write three more times.
+- **Contract change (PLAN §0.3):** `agent.capabilities` — what the environment CAN do, as distinct
+  from what the agent is allowed to do (`policy`) or where it may act (`scope`). One key so far,
+  `test_plans` (default `true`). Creating a test _case_ is an ordinary work-item write and needs
+  only Basic access; creating a test _plan_ or _suite_ goes through the Test Plans service, which
+  needs the Test Plans access level — a paid extension. With `test_plans: false` the plan and
+  suite tools are removed from the skill's view, the instructions drop the suite step and say why,
+  and the verifier stops requiring suite membership.
+- **Contract, additive:** `VerifyPayload.limitations` — checks the verifier did not make, and why.
+  A run can be done without being complete, and the difference belongs in the ledger rather than in
+  a footnote. `aqa replay` renders them under "Checks not made".
+- `ServerSpec.defaultArgs`, merged before gating so the ledger and the policy record the arguments
+  actually sent. Fixes "Client does not support form elicitation": the Azure DevOps server asks the
+  client for `project` when it is missing, and this client cannot answer.
+- No-progress stop rule (`MAX_STALE_CYCLES = 3`): a cycle whose calls were all made before is fed
+  back once, then the run ends as blocked. Observed: the same two files read 29 times. A
+  successful call that produced artefacts, or that is not a read, clears the memo — re-running the
+  suite after editing a spec is the same call with a different meaning, and refusing it stranded
+  the agent (observed: the model rewrote the spec 13 times working around the rule).
+- The model's own notes are fed back cycle to cycle (`NOTE_WINDOW = 4`). Each cycle is assembled
+  from the ledger rather than from an API-side conversation, which is what makes a run replayable —
+  but without its own notes the model receives identical input and makes an identical decision.
+- Context windows split by role: `SOURCE_CHARS = 16_000` for primary sources, `STEP_CHARS = 2_000`
+  for step results. A flat 400-character cap had been starving the agent of the acceptance criteria
+  it had just read, so it read the work item again, forever.
+- `spawnable()`: on Windows a `.cmd`/`.bat` is run through `ComSpec`, since Node refuses to spawn
+  one directly (`EINVAL`).
+- Azure DevOps auth: `--authentication envvar` with the PAT in `ADO_MCP_AUTH_TOKEN`, passed through
+  the child process environment and never argv. The server's default is interactive browser OAuth,
+  which opened a browser window mid-run.
+- The skill names the credential variables exactly (`AQA_APP_USER`, `AQA_APP_PASS`) and forbids
+  falling back to credentials the model happens to know for the application — observed: it invented
+  `AQA_USER_EMAIL`, then signed in as the Juice Shop administrator.
+- Budgets raised to 60 steps / 1,500,000 tokens; a fix → run → fix cycle costs roughly 14k tokens,
+  most of it the fixed tool schemas.
+- Fixture regenerated: `agent.capabilities` changes the config hash in the `request` event. Still
+  42 events, no shape change.

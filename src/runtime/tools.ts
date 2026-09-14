@@ -15,6 +15,8 @@ export interface ScopeArgs {
   repo?: string;
   testPlan?: string;
   branch?: string;
+  /** Argument holding a URL, checked against `agent.scope.urls` (A8). */
+  url?: string;
 }
 
 /** One operation of an action-multiplexed tool (see `ToolDescriptor.actions`). */
@@ -52,6 +54,12 @@ export interface ToolDescriptor {
    * refused, exactly like an unknown tool.
    */
   actions?: Record<string, ActionDescriptor>;
+  /**
+   * Arguments the runtime fills in when the model omits them — currently the
+   * Azure DevOps project. Merged BEFORE the gate sees the call, so the ledger
+   * and the policy decision both describe what was actually sent (A8).
+   */
+  defaultArgs?: Record<string, unknown>;
 }
 
 export interface ToolResult {

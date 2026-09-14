@@ -87,6 +87,16 @@ function deps(
 
 const goal: ModelDecision = { calls: [], usage: u };
 const read: ModelDecision = { calls: [{ toolName: "s.read", args: {} }], usage: u };
+/**
+ * Distinct reads. Repeating one identical call is caught by the no-progress
+ * stop rule (see "stop rules" below), so a test about BUDGETS has to make
+ * genuinely different calls or it would stop for the other reason first.
+ */
+const reads = (n: number): ModelDecision[] =>
+  Array.from({ length: n }, (_, i) => ({
+    calls: [{ toolName: "s.read", args: { i } }],
+    usage: u,
+  }));
 
 describe("golden: the loop reproduces the checked-in fixture exactly", () => {
   it("byte-for-byte", async () => {
@@ -143,7 +153,7 @@ describe("stop rules", () => {
   });
 
   it("budget: step budget exhausted → exit 4", async () => {
-    const d = deps(Array(10).fill(read), { config: config({ steps: 3 }) });
+    const d = deps(reads(10), { config: config({ steps: 3 }) });
     const r = await runLoop(d);
     expect(r.status).toBe("budget");
     expect(r.exitCode).toBe(4);
@@ -151,8 +161,32 @@ describe("stop rules", () => {
     expect(r.summary).toMatch(/step budget of 3/);
   });
 
+  it("no progress: the same call repeated → blocked, long before the budget dies", async () => {
+    // The failure this reproduces: a real run made the same two reads 29 times
+    // each across 36 cycles and died of token exhaustion with nothing done.
+    const d = deps(Array(30).fill(read), { config: config({ steps: 50, tokens: 1_000_000 }) });
+    const r = await runLoop(d);
+    expect(r.status).toBe("blocked");
+    expect(r.exitCode).toBe(2);
+    expect(r.summary).toMatch(/no progress/);
+    // it executed the call ONCE; the repeats never reached the tool
+    expect(d.ledger.read().filter((e) => e.kind === "call")).toHaveLength(1);
+  });
+
+  it("no progress: a NEW call resets the counter", async () => {
+    const d = deps(
+      [read, read, { calls: [{ toolName: "s.read", args: { x: 1 } }], usage: u }, goal],
+      {
+        config: config({ steps: 50 }),
+      },
+    );
+    const r = await runLoop(d);
+    expect(r.status).toBe("done");
+    expect(d.ledger.read().filter((e) => e.kind === "call")).toHaveLength(2);
+  });
+
   it("budget: token budget exhausted → exit 4", async () => {
-    const d = deps(Array(10).fill(read), { config: config({ tokens: 250 }) });
+    const d = deps(reads(10), { config: config({ tokens: 250 }) });
     const r = await runLoop(d);
     expect(r.status).toBe("budget");
     expect(r.summary).toMatch(/token budget/);
@@ -286,5 +320,193 @@ describe("gate feedback", () => {
     const ctx = d.ledger.read().filter((e) => e.kind === "context");
     expect(ctx.length).toBeGreaterThan(0);
     for (const c of ctx) expect(JSON.stringify(c.payload)).not.toContain("SECRET-REQUEST-TEXT");
+  });
+});
+
+describe("repeat memo vs state change", () => {
+  it("allows a re-run after a workspace write — the world changed, so the call means something new", async () => {
+    // The failure this encodes: the agent wrote the spec, ran the suite, fixed
+    // the spec, and then could not re-run because the call looked identical.
+    const t = new StubTools()
+      .add(
+        {
+          server: "s",
+          name: "run",
+          description: "",
+          inputSchema: {},
+          policyClass: "write_workspace",
+        },
+        { ok: true, result: { green: false }, artefacts: [] },
+      )
+      .add(
+        {
+          server: "s",
+          name: "edit",
+          description: "",
+          inputSchema: {},
+          policyClass: "write_workspace",
+        },
+        { ok: true, result: { written: true }, artefacts: ["tests/a.spec.ts"] },
+      );
+    const run: ModelDecision = { calls: [{ toolName: "s.run", args: {} }], usage: u };
+    const edit: ModelDecision = { calls: [{ toolName: "s.edit", args: {} }], usage: u };
+    const model = new ScriptedModel({
+      plan: { steps: [], usage: u },
+      decisions: [run, edit, run, edit, run, goal],
+    });
+    const d = deps([], {
+      model,
+      tools: t,
+      skill: {
+        name: "t",
+        instructions: "",
+        allowedTools: ["s.run", "s.edit"],
+        verifier: new ScriptedVerifier([{ done: true, gaps: [] }]),
+      },
+      config: config({ steps: 20 }),
+    });
+    const r = await runLoop(d);
+    expect(r.status).toBe("done");
+    // all five calls executed: the repeats were legitimate
+    expect(d.ledger.read().filter((e) => e.kind === "call")).toHaveLength(5);
+  });
+});
+
+describe("an operation the environment refuses is closed for the rest of the run", () => {
+  const DENIAL =
+    "Error creating test plan: You are not authorized to access this API. " +
+    "Please contact your project administrator";
+
+  const planTools = () =>
+    new StubTools().add(
+      {
+        server: "ado",
+        name: "plan_write",
+        description: "",
+        inputSchema: {},
+        policyClass: "write_record",
+      },
+      { ok: false, result: { message: DENIAL }, artefacts: [] },
+    );
+
+  const planSkill = (): Skill => ({
+    name: "t",
+    instructions: "",
+    allowedTools: ["ado.plan_write"],
+    verifier: new ScriptedVerifier([{ done: true, gaps: [] }]),
+  });
+
+  /**
+   * The shape actually observed: the model varies the arguments between
+   * attempts, so the exact-argument repeat memo never fires and every attempt
+   * reaches the reviewer as a fresh approval.
+   */
+  const varied: ModelDecision[] = [
+    { calls: [{ toolName: "ado.plan_write", args: { action: "create", name: "P" } }], usage: u },
+    {
+      calls: [
+        { toolName: "ado.plan_write", args: { action: "create", name: "P", iteration: "i" } },
+      ],
+      usage: u,
+    },
+    {
+      calls: [{ toolName: "ado.plan_write", args: { action: "create", name: "P", areaPath: "a" } }],
+      usage: u,
+    },
+    goal,
+  ];
+
+  it("is attempted once, then refused without calling the tool again", async () => {
+    const d = deps(varied, {
+      tools: planTools(),
+      skill: planSkill(),
+      config: config({ steps: 20 }),
+    });
+    const r = await runLoop(d);
+    expect(r.status).toBe("done");
+    expect(d.ledger.read().filter((e) => e.kind === "call")).toHaveLength(1);
+  });
+
+  it("does not ask the reviewer to approve a call already known to be dead", async () => {
+    const d = deps(varied, {
+      tools: planTools(),
+      skill: planSkill(),
+      config: config({ steps: 20 }),
+    });
+    await runLoop(d);
+    expect(d.ledger.read().filter((e) => e.kind === "approval_requested")).toHaveLength(1);
+  });
+
+  it("records the refusal as a policy decision quoting the environment", async () => {
+    const d = deps(varied, {
+      tools: planTools(),
+      skill: planSkill(),
+      config: config({ steps: 20 }),
+    });
+    await runLoop(d);
+    const refusals = d.ledger
+      .read()
+      .filter((e) => e.kind === "policy")
+      .map((e) => e.payload as { decision: string; reason: string })
+      .filter((p) => p.decision === "refuse");
+    expect(refusals).toHaveLength(2);
+    expect(refusals[0]!.reason).toContain("not authorized to access this API");
+    expect(refusals[0]!.reason).toContain("ado.plan_write#create");
+  });
+
+  it("closes the operation, not the tool: another action of the same tool still runs", async () => {
+    const t = new StubTools()
+      .add(
+        {
+          server: "ado",
+          name: "plan_write",
+          description: "",
+          inputSchema: {},
+          policyClass: "write_record",
+        },
+        (args: Record<string, unknown>) =>
+          args["action"] === "create"
+            ? { ok: false, result: { message: DENIAL }, artefacts: [] }
+            : { ok: true, result: { updated: true }, artefacts: [] },
+      )
+      .add(
+        { server: "s", name: "read", description: "", inputSchema: {}, policyClass: "read" },
+        { ok: true, result: { v: 1 }, artefacts: [] },
+      );
+    const d = deps(
+      [
+        { calls: [{ toolName: "ado.plan_write", args: { action: "create" } }], usage: u },
+        { calls: [{ toolName: "ado.plan_write", args: { action: "update" } }], usage: u },
+        goal,
+      ],
+      {
+        tools: t,
+        skill: {
+          name: "t",
+          instructions: "",
+          allowedTools: ["ado.plan_write", "s.read"],
+          verifier: new ScriptedVerifier([{ done: true, gaps: [] }]),
+        },
+        config: config({ steps: 20 }),
+      },
+    );
+    await runLoop(d);
+    expect(d.ledger.read().filter((e) => e.kind === "call")).toHaveLength(2);
+  });
+
+  it("an ordinary failure is still retryable", async () => {
+    const t = new StubTools().add(
+      {
+        server: "ado",
+        name: "plan_write",
+        description: "",
+        inputSchema: {},
+        policyClass: "write_record",
+      },
+      { ok: false, result: { message: "Required field 'name' was not supplied" }, artefacts: [] },
+    );
+    const d = deps(varied, { tools: t, skill: planSkill(), config: config({ steps: 20 }) });
+    await runLoop(d);
+    expect(d.ledger.read().filter((e) => e.kind === "call")).toHaveLength(3);
   });
 });

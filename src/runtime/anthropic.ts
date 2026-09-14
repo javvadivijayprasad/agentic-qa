@@ -109,7 +109,8 @@ export class AnthropicModel implements ModelClient {
     this.apiKey = opts.apiKey;
     this.model = opts.model ?? DEFAULT_MODEL;
     this.promptVersion = opts.promptVersion ?? DEFAULT_PROMPT_VERSION;
-    this.maxTokens = opts.maxTokens ?? 4096;
+    // A generated spec for half a dozen scenarios does not fit in 4k.
+    this.maxTokens = opts.maxTokens ?? 8192;
     this.factory = opts.factory ?? sdkMessagesFactory;
     this.warn = opts.warn ?? (() => {});
   }
@@ -271,6 +272,13 @@ export function renderCycle(input: ModelInput): string {
   if (steps.length > 0) {
     sections.push(`# What has happened so far\n\n${steps.map(renderItem).join("\n\n")}`);
   }
+  if (input.notes && input.notes.length > 0) {
+    sections.push(
+      `# What you said in earlier cycles\n\nYour reasoning is not carried over automatically; this is it, oldest first. Continue from it rather than starting again.\n\n${input.notes
+        .map((n) => `- ${n}`)
+        .join("\n")}`,
+    );
+  }
   if (input.gaps && input.gaps.length > 0) {
     sections.push(
       `# The verifier rejected the run\n\nYou said the goal was reached; it is not. These gaps remain, and this is your last attempt:\n\n${input.gaps
@@ -279,7 +287,7 @@ export function renderCycle(input: ModelInput): string {
     );
   }
   sections.push(
-    `# Now\n\nChoose the next action. Reply with tool calls, or with no tool calls if you believe the goal is reached.`,
+    `# Now\n\nChoose the next action. Reply with tool calls, or with no tool calls if you believe the goal is reached. Re-reading something already shown above changes nothing and will be refused — if you have what you need, act on it.`,
   );
   return sections.join("\n\n");
 }

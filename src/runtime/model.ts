@@ -47,6 +47,17 @@ export interface ModelInput {
   history: HistoryItem[];
   /** Verifier gaps from a previous attempt, if the loop is giving the model one more round. */
   gaps?: string[];
+  /**
+   * What the model said in earlier cycles, oldest first (A8).
+   *
+   * Each cycle is a fresh request built from the ledger, which is what makes a
+   * run replayable — but it also means the model's reasoning does not survive
+   * unless it is fed back. Without this, a cycle that changes nothing
+   * observable (re-reading a file already in context) presents the model with
+   * the same input as last time, and the same input produces the same decision:
+   * the run spins until a budget kills it. Observed doing exactly that.
+   */
+  notes?: string[];
 }
 
 export interface ModelClient {

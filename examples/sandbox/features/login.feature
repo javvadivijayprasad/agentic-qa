@@ -1,35 +1,31 @@
-# Sandbox fixture: mirrors Azure DevOps work item AB#1 "Login with valid
-# credentials" (AC-1 … AC-4) in the agentic-qa-sandbox project. Used to exercise
-# bdd2pw and pw without touching Azure DevOps:
-#
-#   aqa run "…" --workspace examples/sandbox --dry-run
-#
 Feature: Login with valid credentials
 
-  Background:
-    Given the login page is open
+  AC-1: A registered user who submits their correct email and password is signed in
 
-  Scenario: AC-1 a registered user with correct credentials reaches the dashboard
-    When the user signs in with a valid username and password
-    Then the dashboard is displayed
-    And the user's name is shown in the header
+  Scenario: AC-1 Successful login with valid credentials
+    Given I am on the login page
+    When I submit valid registered email and correct password
+    Then I am signed in and the account menu shows my email address and offers Logout
 
-  Scenario: AC-2 an incorrect password is rejected without revealing which field failed
-    When the user signs in with a valid username and a wrong password
-    Then the message "Invalid username or password" is displayed
-    And the user stays on the login page
+  Scenario: AC-2 Invalid password shows generic error message
+    Given I am on the login page
+    When I submit a valid email with an incorrect password
+    Then I remain on the login page and see "Invalid email or password."
+    And the message does not reveal whether the email or password was wrong
 
-  Scenario: AC-3 the account locks after five consecutive failures
-    Given the user has failed to sign in four times
-    When the user signs in with a wrong password
-    Then the message "Account locked" is displayed
-
-  Scenario Outline: AC-4 required fields are validated before any request is sent
-    When the user signs in with "<username>" and "<password>"
-    Then the message "<message>" is displayed
+  Scenario Outline: AC-3 Log in button is disabled while fields are empty
+    Given I am on the login page
+    When I touch the "<field>" field and leave it empty
+    Then the Log in button is disabled
+    And I see the message "<message>"
 
     Examples:
-      | username | password | message              |
-      |          | secret   | Username is required |
-      | alice    |          | Password is required |
-      |          |          | Username is required |
+      | field    | message                           |
+      | email    | Please provide an email address.  |
+      | password | Please provide a password.        |
+
+  Scenario: AC-4 Unregistered email produces same error as wrong password
+    Given I am on the login page
+    When I submit an unregistered email with any password
+    Then I see "Invalid email or password."
+    And the response does not disclose whether an account exists

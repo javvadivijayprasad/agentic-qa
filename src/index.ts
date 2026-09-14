@@ -13,8 +13,9 @@ export {
 } from "./ledger/ledger.js";
 export { renderLine, renderMarkdown, computeStats } from "./ledger/replay.js";
 export type { ReplayStats } from "./ledger/replay.js";
-export { runLoop } from "./runtime/loop.js";
+export { runLoop, MAX_STALE_CYCLES } from "./runtime/loop.js";
 export type { LoopDeps, LoopResult } from "./runtime/loop.js";
+export { authorizationFailure, deniedOperationReason, operationKey } from "./runtime/denials.js";
 export { ScriptedModel } from "./runtime/model.js";
 export type {
   ModelClient,
@@ -89,6 +90,7 @@ export {
 export {
   ScopedGate,
   matchesAny,
+  matchesUrl,
   raise,
   resolveAction,
   DESTRUCTIVE_NAME_PATTERNS,
@@ -120,7 +122,14 @@ export type {
 } from "./mcp/client.js";
 export { DEFAULT_MANIFEST, UNCLASSIFIED, classify, entryClass } from "./mcp/manifest.js";
 export type { Manifest, ManifestEntry } from "./mcp/manifest.js";
-export { azureDevOpsServer, playwrightServer, npxCommand, PINNED_VERSIONS } from "./mcp/servers.js";
+export {
+  azureDevOpsServer,
+  playwrightServer,
+  originsOf,
+  npxCommand,
+  PINNED_VERSIONS,
+} from "./mcp/servers.js";
+export type { PlaywrightServerOptions } from "./mcp/servers.js";
 export { FsTools } from "./mcp/adapters/fs.js";
 export { Bdd2PwTools, parseFeature, renderSpec } from "./mcp/adapters/bdd2pw.js";
 export type { GherkinFeature, GherkinScenario, GherkinStep } from "./mcp/adapters/bdd2pw.js";

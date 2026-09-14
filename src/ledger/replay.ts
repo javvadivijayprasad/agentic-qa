@@ -35,7 +35,11 @@ export function renderLine(e: AnyRunEvent): string {
     }
     case "verify":
       return e.payload.done
-        ? `Verifier: done`
+        ? `Verifier: done${
+            e.payload.limitations?.length
+              ? ` (${e.payload.limitations.length} check(s) not made)`
+              : ""
+          }`
         : `Verifier: ${e.payload.gaps.length} gaps — ${e.payload.gaps[0]?.message ?? ""}`;
     case "end":
       return `Agent finished: ${e.payload.status} — ${e.payload.summary}`;
@@ -143,6 +147,14 @@ export function renderMarkdown(events: AnyRunEvent[]): string {
     lines.push("## Verifier gaps");
     lines.push("");
     for (const g of verify.payload.gaps) lines.push(`- \`${g.code}\` — ${g.message}`);
+  }
+  // A run can be done without being complete. What was NOT checked belongs in
+  // the report next to what was, or the reader has to infer it from silence.
+  if (verify && verify.kind === "verify" && (verify.payload.limitations?.length ?? 0) > 0) {
+    lines.push("");
+    lines.push("## Checks not made");
+    lines.push("");
+    for (const l of verify.payload.limitations ?? []) lines.push(`- ${l}`);
   }
   lines.push("");
   lines.push("_Rendered by `aqa replay` from the ledger only — no tool or model calls were made._");

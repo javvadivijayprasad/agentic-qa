@@ -16,12 +16,27 @@ export type CommandRunner = (
   opts: { cwd: string; timeoutMs: number },
 ) => Promise<CommandResult>;
 
+/**
+ * Windows will not spawn a `.cmd` or `.bat` directly any more — Node rejects it
+ * with EINVAL since the 2024 batch-file argument-injection fix — so a batch
+ * launcher is run through the command interpreter explicitly. Arguments are
+ * still passed as an ARRAY, never concatenated into a command line, and
+ * `shell` stays false: this is not "run it in a shell", it is "run cmd.exe with
+ * these exact arguments".
+ */
+export function spawnable(command: string, args: string[]): { command: string; args: string[] } {
+  if (process.platform !== "win32" || !/\.(cmd|bat)$/i.test(command)) return { command, args };
+  const comspec = process.env["ComSpec"] ?? "cmd.exe";
+  return { command: comspec, args: ["/d", "/s", "/c", command, ...args] };
+}
+
 /** Default runner: no shell, so nothing in an argument can be interpreted. */
 export const execFileRunner: CommandRunner = (command, args, opts) =>
   new Promise((resolve) => {
+    const spawned = spawnable(command, args);
     execFile(
-      command,
-      args,
+      spawned.command,
+      spawned.args,
       { cwd: opts.cwd, timeout: opts.timeoutMs, maxBuffer: 32 * 1024 * 1024, shell: false },
       (error, stdout, stderr) => {
         const code =

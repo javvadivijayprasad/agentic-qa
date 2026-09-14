@@ -130,6 +130,14 @@ export interface Gap {
 export interface VerifyPayload {
   done: boolean;
   gaps: Gap[];
+  /**
+   * Checks the verifier did NOT make, and why (A8b, additive and optional). A
+   * run can be done without being complete — an account without the Test Plans
+   * access level cannot put cases in a suite — and the difference belongs in
+   * the ledger rather than in a footnote, so that a reader of the evidence can
+   * see what was verified and what was merely not required.
+   */
+  limitations?: string[];
 }
 
 export interface EndPayload {
@@ -176,9 +184,37 @@ export interface ScopeConfig {
   repos: string[];
   test_plans: string[];
   branches_writable: string[];
+  /**
+   * Origins (or URL prefixes/globs) the agent may point a browser at (A8).
+   * Empty means the agent may not browse at all. Enforced by the gate on every
+   * navigation; see `ScopedGate` for what this does and does not cover.
+   */
+  urls: string[];
 }
 
 export type PolicyTable = Record<PolicyClass, PolicyDecision>;
+
+/**
+ * What the ENVIRONMENT can do, as opposed to what the agent is allowed to do
+ * (`policy`) or where it may act (`scope`). A capability that is off is not a
+ * permission the operator withheld; it is a thing this Azure DevOps account
+ * cannot do at all, and the run should neither attempt it nor be failed for
+ * not having done it.
+ */
+export interface CapabilitiesConfig {
+  /**
+   * Whether test PLANS and SUITES may be created. Creating a test *case* is an
+   * ordinary work-item write and needs only Basic access; creating a plan or a
+   * suite goes through the Test Plans service, which needs the Test Plans
+   * access level (a paid extension) and answers "You are not authorized to
+   * access this API" without it. Set false on an account that does not have it:
+   * the run then records cases linked to the story and reports the missing
+   * suite membership as an environment limitation rather than a gap.
+   */
+  test_plans: boolean;
+}
+
+export const DEFAULT_CAPABILITIES: CapabilitiesConfig = { test_plans: true };
 
 export interface AgentConfig {
   model: string;
@@ -186,6 +222,8 @@ export interface AgentConfig {
   budgets: { steps: number; tokens: number };
   scope: ScopeConfig;
   policy: PolicyTable;
+  /** Additive and optional (A8b); defaults to `DEFAULT_CAPABILITIES`. */
+  capabilities: CapabilitiesConfig;
 }
 
 export const DEFAULT_POLICY: PolicyTable = {

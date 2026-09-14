@@ -153,6 +153,7 @@ async function buildTooling(
   args: string[],
   io: CliIo,
   deps: ToolingDeps,
+  scopeUrls: string[] = [],
 ): Promise<{
   specs: ServerSpec[];
   tools: ToolClient;
@@ -175,7 +176,7 @@ async function buildTooling(
           "--servers includes ado but AZURE_DEVOPS_ORG_URL/PAT/PROJECT are not set",
         );
       specs.push(azureDevOpsServer(env));
-    } else if (w === "playwright") specs.push(playwrightServer());
+    } else if (w === "playwright") specs.push(playwrightServer({ allowedOrigins: scopeUrls }));
     else if (w === "tcg" && !env.tcgUrl)
       throw new ConfigError("--servers includes tcg but TCG_URL is not set");
     else if (w === "synthdata" && !env.synthdataCmd)
@@ -246,7 +247,7 @@ export async function run(args: string[], io: CliIo, deps: ToolingDeps = {}): Pr
   const config = await loadAgentConfig(configPath);
 
   if (!args.includes("--dry-run")) return live(request, args, config, io, deps);
-  const { tools, close } = await buildTooling(args, io, deps);
+  const { tools, close } = await buildTooling(args, io, deps, config.scope.urls);
   try {
     const list = await tools.listTools();
     const gate = new ScopedGate(config.policy, config.scope, {
@@ -257,7 +258,7 @@ export async function run(args: string[], io: CliIo, deps: ToolingDeps = {}): Pr
       `  config: model ${config.model}, budgets ${config.budgets.steps} steps / ${config.budgets.tokens} tokens\n`,
     );
     io.out(
-      `  scope: work_items ${config.scope.work_items.join(",") || "(none)"}; repos ${config.scope.repos.join(",") || "(none)"}; test_plans ${config.scope.test_plans.join(",") || "(none)"}\n`,
+      `  scope: work_items ${config.scope.work_items.join(",") || "(none)"}; repos ${config.scope.repos.join(",") || "(none)"}; test_plans ${config.scope.test_plans.join(",") || "(none)"}; urls ${config.scope.urls.join(",") || "(none)"}\n`,
     );
     io.out(`  ${list.length} tools visible to the gate (class → table decision):\n`);
     for (const t of list) {
@@ -298,11 +299,26 @@ async function live(
   io: CliIo,
   deps: ToolingDeps,
 ): Promise<number> {
-  loadDotEnv(flag(args, "--env") ?? ".env");
+  const envFile = flag(args, "--env") ?? ".env";
+  const loaded = loadDotEnv(envFile);
   // Read without demanding the API key first: refusing an out-of-scope request
   // should not require credentials, and the key is only needed once a model is
   // actually built.
   const env = readRuntimeEnv(process.env, { requireAnthropic: false });
+
+  // Say where the credentials came from. A stale ANTHROPIC_API_KEY already in
+  // the shell wins over the file (standard dotenv precedence) and silently
+  // shadows it, which otherwise surfaces only as an unexplained 401.
+  const keySource = loaded.includes("ANTHROPIC_API_KEY")
+    ? envFile
+    : env.anthropicApiKey
+      ? "the shell environment (NOT " + envFile + ")"
+      : "nowhere";
+  io.err(
+    `aqa: env ${resolve(envFile)} — ${loaded.length} key(s) loaded; ANTHROPIC_API_KEY ${mask(
+      env.anthropicApiKey,
+    )} from ${keySource}\n`,
+  );
 
   const approvalMode = flag(args, "--approval") ?? "terminal";
   if (approvalMode !== "file" && approvalMode !== "terminal") {
@@ -332,9 +348,18 @@ async function live(
       ? new FileApprover({ dir: join(ledger.dir, APPROVALS_DIR) })
       : new TerminalApprover();
 
-  const { tools, close, workspace } = await buildTooling(args, io, deps);
+  const { tools, close, workspace } = await buildTooling(args, io, deps, config.scope.urls);
   try {
-    const skill = storyToTestsSkill({ workItem });
+    const planName = config.scope.test_plans[0];
+    // An account without the Test Plans access level cannot create a plan or a
+    // suite; requiring suite membership there fails every run for a reason the
+    // agent has no way to act on, so the check becomes a recorded limitation.
+    const canCreatePlans = config.capabilities.test_plans;
+    const skill = storyToTestsSkill({
+      workItem,
+      ...(canCreatePlans && planName ? { testPlan: planName } : {}),
+      ...(canCreatePlans ? {} : { requireSuiteMembership: false }),
+    });
     if (!deps.buildModel && !env.anthropicApiKey)
       throw new ConfigError("ANTHROPIC_API_KEY is not set");
     const model =
@@ -350,6 +375,11 @@ async function live(
     io.err(
       `aqa: skill ${skill.name}, work item ${workItem}, model ${model.model}, approval ${approvalMode}\n`,
     );
+    if (!canCreatePlans)
+      io.err(
+        "aqa: capabilities.test_plans is false — cases will be created and linked, " +
+          "but no plan or suite (this account has no Test Plans access level)\n",
+      );
     io.err(`aqa: ledger ${ledger.dir}\n`);
 
     const result = await runLoop({

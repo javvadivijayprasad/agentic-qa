@@ -132,18 +132,33 @@ export const DEFAULT_MANIFEST: Manifest = {
     scopeArgs: { repo: "repositoryId", branch: "branchName" },
   },
 
-  // ---------------------------------------------------------------- Playwright: observation only
-  // The tools that only LOOK at the page. Everything that drives the browser
-  // (navigate, click, type, fill_form, …) stays unclassified until the config
-  // gains a URL allow-list — without one the gate cannot tell a staging app
-  // from production, and "which site may the agent touch" is a scope question,
-  // not a class question. `browser_evaluate` and `browser_run_code_unsafe`
-  // execute arbitrary JavaScript and are never classified.
+  // ---------------------------------------------------------------- Playwright: exploration only
+  //
+  // The agent may LOOK at the application under test; it may not OPERATE it.
+  // Navigation is admitted (scope-checked against agent.scope.urls) together
+  // with the tools that read the rendered page, because an SPA's selectors
+  // exist only in the DOM and cannot be read off disk. Everything that acts on
+  // the page — click, type, fill_form, press_key, select_option, hover, drag,
+  // drop, file_upload, handle_dialog — stays unclassified, so the only thing
+  // that ever interacts with the application is the TEST SUITE the agent
+  // writes, under `pw.run_tests`. That keeps the agent's exploration free of
+  // side effects on the system under test, and it means a run cannot quietly
+  // change the app's state and then assert against it.
+  //
+  // `browser_evaluate` and `browser_run_code_unsafe` execute arbitrary
+  // JavaScript in the page and the Playwright server respectively, and are
+  // never classified.
+  "playwright.browser_navigate": {
+    policyClass: "write_workspace",
+    scopeArgs: { url: "url" },
+  },
+  "playwright.browser_navigate_back": { policyClass: "write_workspace" },
   "playwright.browser_snapshot": { policyClass: "read" },
   "playwright.browser_console_messages": { policyClass: "read" },
   "playwright.browser_network_requests": { policyClass: "read" },
   "playwright.browser_network_request": { policyClass: "read" },
   "playwright.browser_find": { policyClass: "read" },
+  "playwright.browser_wait_for": { policyClass: "read" },
   // Writes an image file into the Playwright output directory.
   "playwright.browser_take_screenshot": { policyClass: "write_workspace" },
 };

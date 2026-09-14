@@ -195,6 +195,26 @@ export class ScopedGate extends TableGate {
       }
     }
 
+    // 1c. URL inspection (A8). Only NAVIGATION carries a URL, so this is where
+    // the boundary is enforced; see `matchesUrl` for what it does not cover.
+    const urlArg = scopeArgs?.url;
+    if (urlArg) {
+      const url = str(call.args[urlArg]);
+      if (url === undefined) {
+        return refuse(call, cls, `argument "${urlArg}" (url) is required for scope checks`);
+      }
+      if (!matchesUrl(url, this.scope.urls, this.opts.sandbox)) {
+        return refuse(
+          call,
+          cls,
+          this.scope.urls.length === 0
+            ? `agent.scope.urls is empty, so the agent may not browse at all (asked for ${url})`
+            : `url "${url}" is not in the allowed urls`,
+        );
+      }
+      notes.push(`url ${url} in scope`);
+    }
+
     // 2. scope allow-lists
     const checks: Array<[keyof ScopeArgs, keyof ScopeConfig, string]> = [
       ["workItem", "work_items", "work item"],
@@ -280,6 +300,56 @@ export function matchesAny(value: string, allowed: string[], sandbox = false): b
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * URL allow-list match (A8). An entry may be
+ *   - an origin — `http://localhost:3100` allows that origin and every path under it;
+ *   - a prefix — `https://staging.example.com/app` allows that path and below;
+ *   - a glob — `https://*.staging.example.com/*`;
+ *   - `"*"`, honoured only in sandbox mode.
+ * Matching is on the parsed origin plus path, so `http://localhost:3100@evil.com`
+ * and a differing port or scheme do not sneak through a string prefix test.
+ *
+ * WHAT THIS DOES NOT COVER, and it matters: only a navigation carries a URL
+ * argument, so this is checked when the agent asks to GO somewhere. A link the
+ * agent clicks, a redirect, or a script-driven navigation is not gated here.
+ * The Playwright server is additionally started with `--allowed-origins` from
+ * the same list, but Microsoft states plainly that this "does not serve as a
+ * security boundary and does not affect redirects". Treat the pair as scoping
+ * against mistakes, not as containment against a hostile page.
+ */
+export function matchesUrl(value: string, allowed: string[], sandbox = false): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false; // not a URL we can reason about, so not in scope
+  }
+  const normalised = `${url.origin}${url.pathname}`.replace(/\/$/, "");
+  for (const entry of allowed) {
+    if (entry === "*") {
+      if (sandbox) return true;
+      continue;
+    }
+    if (entry.includes("*")) {
+      const re = new RegExp("^" + entry.split("*").map(escapeRe).join(".*") + "$");
+      if (re.test(normalised) || re.test(value)) return true;
+      continue;
+    }
+    let base: URL;
+    try {
+      base = new URL(entry);
+    } catch {
+      continue; // a malformed allow-list entry matches nothing
+    }
+    if (base.origin !== url.origin) continue;
+    const basePath = base.pathname.replace(/\/$/, "");
+    if (basePath === "" || url.pathname === basePath || url.pathname.startsWith(basePath + "/")) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function reasonFor(cls: PolicyClass): string {

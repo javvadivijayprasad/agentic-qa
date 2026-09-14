@@ -8,7 +8,8 @@ import { summarizeCalls } from "./approval.js";
 import type { Clock } from "./clock.js";
 import { systemClock } from "./clock.js";
 import type { ContextBuilder } from "./context.js";
-import { OrderedContextBuilder, compactResult } from "./context.js";
+import { OrderedContextBuilder, compactResult, SOURCE_CHARS, STEP_CHARS } from "./context.js";
+import { authorizationFailure, deniedOperationReason, operationKey } from "./denials.js";
 import type { HistoryItem, ModelClient, ProposedCall } from "./model.js";
 import type { ToolClient, ToolDescriptor } from "./tools.js";
 import { splitQualified } from "./tools.js";
@@ -28,6 +29,16 @@ export interface LoopDeps {
   context?: ContextBuilder;
   /** Deterministic approval ids for fixtures/tests; default is apr-0001, apr-0002, … */
   approvalIdFor?: (n: number) => string;
+}
+
+/** Cycles of pure repetition tolerated before the run is ended as blocked. */
+export const MAX_STALE_CYCLES = 3;
+
+/** Key-order-independent signature of a call's arguments. */
+function stableArgs(args: Record<string, unknown>): string {
+  return JSON.stringify(
+    Object.fromEntries(Object.entries(args).sort(([a], [b]) => a.localeCompare(b))),
+  );
 }
 
 export interface LoopResult {
@@ -59,6 +70,23 @@ export async function runLoop(deps: LoopDeps): Promise<LoopResult> {
   let approvals = 0;
   let gaps: string[] | undefined;
   let retriedAfterGaps = false;
+  /**
+   * Signatures of calls already executed, and how many cycles have produced
+   * nothing new. A model that cannot make progress tends to repeat itself
+   * rather than stop, and without this the run simply burns its budget doing
+   * the same read over and over (observed: the same two files read 29 times).
+   */
+  const executed = new Set<string>();
+  let staleCycles = 0;
+  /**
+   * Operations the environment has refused on authorization grounds, and the
+   * sentence it refused them with. These are closed for the rest of the run:
+   * the gate would allow them, the reviewer might approve them, and they would
+   * fail again identically (see `denials.ts`).
+   */
+  const deniedOps = new Map<string, string>();
+  /** The model's own words, cycle by cycle — fed back so it can follow a plan. */
+  const notes: string[] = [];
 
   const finish = async (status: RunStatus, summary: string): Promise<LoopResult> => {
     ledger.append("end", { status, summary, exitCode: EXIT_CODES[status] }, clock.now());
@@ -88,6 +116,9 @@ export async function runLoop(deps: LoopDeps): Promise<LoopResult> {
     const byName = new Map<string, ToolDescriptor>(
       visible.map((t) => [`${t.server}.${t.name}`, t]),
     );
+    // Primary sources are what the job is ABOUT — the story, a file, a parsed
+    // feature — so they get a much larger window than a step result.
+    const sourceTools = new Set(skill.sourceTools ?? []);
 
     // ---- plan --------------------------------------------------------------
     const planInput = ctx.build({
@@ -120,11 +151,13 @@ export async function runLoop(deps: LoopDeps): Promise<LoopResult> {
         tools: visible,
         history,
         ...(gaps ? { gaps } : {}),
+        ...(notes.length > 0 ? { notes } : {}),
       });
       ledger.append("context", built.event, clock.now());
 
       const decision = await model.decide(built.input);
       tokens += decision.usage.inputTokens + decision.usage.outputTokens;
+      if (decision.note) notes.push(decision.note);
 
       // Goal reached → verify.
       if (decision.calls.length === 0) {
@@ -158,8 +191,14 @@ export async function runLoop(deps: LoopDeps): Promise<LoopResult> {
       gaps = undefined;
 
       // One inference event per proposed call (parallel tool use), then gate each.
+      // Server-configured defaults are merged FIRST, so the gate judges — and
+      // the ledger records — the arguments that will actually be sent.
       const verdicts: Array<{ call: ProposedCall; verdict: GateVerdict }> = [];
-      for (const call of decision.calls) {
+      for (const proposed of decision.calls) {
+        const tool = byName.get(proposed.toolName);
+        const call: ProposedCall = tool?.defaultArgs
+          ? { toolName: proposed.toolName, args: { ...tool.defaultArgs, ...proposed.args } }
+          : proposed;
         ledger.append(
           "inference",
           {
@@ -168,11 +207,59 @@ export async function runLoop(deps: LoopDeps): Promise<LoopResult> {
             toolName: call.toolName,
             args: call.args,
             usage: decision.usage,
+            // On the first call of the cycle only: the reasoning belongs to the
+            // decision, not to each call it produced.
+            ...(decision.note && verdicts.length === 0 ? { note: decision.note } : {}),
           },
           clock.now(),
         );
-        verdicts.push({ call, verdict: gate.judge(call, byName.get(call.toolName)) });
+        // An operation the environment has already refused is refused here,
+        // BEFORE the approval batch is assembled — so the reviewer is never
+        // asked to approve a call that is known to be dead on arrival.
+        const gateVerdict = gate.judge(call, tool);
+        const quoted = deniedOps.get(operationKey(call.toolName, call.args));
+        verdicts.push({
+          call,
+          verdict: quoted
+            ? {
+                ...gateVerdict,
+                decision: "refuse",
+                reason: deniedOperationReason(operationKey(call.toolName, call.args), quoted),
+              }
+            : gateVerdict,
+        });
       }
+
+      // Stop rule: a cycle whose calls were ALL made before has advanced
+      // nothing. Feed that back once, then end the run rather than spending the
+      // remaining budget on repetition.
+      const signatures = verdicts.map((v) => `${v.call.toolName} ${stableArgs(v.call.args)}`);
+      const allRepeats = signatures.length > 0 && signatures.every((sig) => executed.has(sig));
+      if (allRepeats) {
+        staleCycles++;
+        if (staleCycles >= MAX_STALE_CYCLES) {
+          return finish(
+            "blocked",
+            `no progress: the same call(s) were proposed ${staleCycles} cycles running (${signatures[0]}). Their results are already in the ledger.`,
+          );
+        }
+        for (const { call } of verdicts) {
+          history.push({
+            toolName: call.toolName,
+            ok: false,
+            summary: "",
+            ledgerRef: `e${ledger.read().length}`,
+            gate: {
+              decision: "refuse",
+              reason:
+                "you have already made this exact call and its result is in your context; repeating it cannot change anything — do something different or stop and explain what is blocking you",
+            },
+          });
+        }
+        continue;
+      }
+      staleCycles = 0;
+      for (const sig of signatures) executed.add(sig);
 
       // Batch every "ask" in this cycle into ONE approval (design §7).
       const asks = verdicts.filter((v) => v.verdict.decision === "ask");
@@ -260,12 +347,30 @@ export async function runLoop(deps: LoopDeps): Promise<LoopResult> {
           },
           endedAt,
         );
+        // A failure the environment will repeat for any arguments closes the
+        // operation for the rest of the run, and the model is told so in the
+        // same breath as the failure — otherwise it does the reasonable thing
+        // and tries again with different arguments (observed: four times).
+        const refusedForever = ok ? undefined : authorizationFailure(result);
+        const opKey = operationKey(call.toolName, call.args);
+        if (refusedForever) deniedOps.set(opKey, refusedForever);
         history.push({
           toolName: call.toolName,
           ok,
-          summary: compactResult(result),
+          summary: refusedForever
+            ? deniedOperationReason(opKey, refusedForever)
+            : compactResult(result, sourceTools.has(call.toolName) ? SOURCE_CHARS : STEP_CHARS),
           ledgerRef: `ledger://${ledger.runId}/${obs.eventId}`,
         });
+
+        // A call that CHANGED something invalidates the repeat memo: running
+        // the same suite again after editing a spec is the same call with a
+        // different meaning, and refusing it strands the agent — observed, with
+        // the model rewriting the file thirteen times trying to get a re-run
+        // past the rule.
+        const changedTheWorld =
+          artefacts.length > 0 || (byName.get(call.toolName)?.policyClass ?? "read") !== "read";
+        if (ok && changedTheWorld) executed.clear();
       }
 
       // If a denied approval blocked every call this cycle and nothing else can happen, stop.

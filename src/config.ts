@@ -1,7 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { extname, resolve } from "node:path";
-import type { AgentConfig, PolicyDecision, PolicyTable, ScopeConfig } from "./types.js";
-import { DEFAULT_POLICY, POLICY_CLASSES } from "./types.js";
+import type {
+  AgentConfig,
+  CapabilitiesConfig,
+  PolicyDecision,
+  PolicyTable,
+  ScopeConfig,
+} from "./types.js";
+import { DEFAULT_CAPABILITIES, DEFAULT_POLICY, POLICY_CLASSES } from "./types.js";
 
 /**
  * Loads the `agent:` section of `ai-quality.config.yaml` (PLAN §0.3). JSON is
@@ -50,6 +56,7 @@ export function agentConfigFromObject(raw: unknown, source = "<config>"): AgentC
     repos: strList(s["repos"], `${source}: agent.scope.repos`),
     test_plans: strList(s["test_plans"], `${source}: agent.scope.test_plans`),
     branches_writable: strList(s["branches_writable"], `${source}: agent.scope.branches_writable`),
+    urls: strList(s["urls"], `${source}: agent.scope.urls`),
   };
 
   const p = isObject(agent["policy"]) ? agent["policy"] : {};
@@ -66,7 +73,19 @@ export function agentConfigFromObject(raw: unknown, source = "<config>"): AgentC
       throw new ConfigError(`${source}: agent.policy has unknown class "${key}"`);
   }
 
-  return { model, prompt_version, budgets, scope, policy };
+  const c = isObject(agent["capabilities"]) ? agent["capabilities"] : {};
+  const capabilities: CapabilitiesConfig = { ...DEFAULT_CAPABILITIES };
+  for (const key of Object.keys(c)) {
+    if (!(key in DEFAULT_CAPABILITIES))
+      throw new ConfigError(`${source}: agent.capabilities has unknown key "${key}"`);
+  }
+  if (c["test_plans"] !== undefined) {
+    if (typeof c["test_plans"] !== "boolean")
+      throw new ConfigError(`${source}: agent.capabilities.test_plans must be true or false`);
+    capabilities.test_plans = c["test_plans"];
+  }
+
+  return { model, prompt_version, budgets, scope, policy, capabilities };
 }
 
 // ---------------------------------------------------------------------------
@@ -89,7 +108,12 @@ export function loadDotEnv(file = ".env", env: NodeJS.ProcessEnv = process.env):
       (value.startsWith("'") && value.endsWith("'"))
     )
       value = value.slice(1, -1);
-    if (env[key] === undefined) {
+    // Standard dotenv precedence: a variable already in the environment wins.
+    // An EMPTY ambient variable does not, though — `setx FOO ""` leaves a
+    // defined-but-blank value that would otherwise shadow a real one in the
+    // file and fail later as "not set", which is a maddening way to lose an
+    // afternoon.
+    if (env[key] === undefined || env[key] === "") {
       env[key] = value;
       loaded.push(key);
     }

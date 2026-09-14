@@ -35,6 +35,13 @@ export interface ServerSpec {
   /** Extra environment for the child. Values are never logged. */
   env?: Record<string, string>;
   cwd?: string;
+  /**
+   * Arguments to fill in on every tool of this server that declares them in its
+   * input schema. Microsoft's Azure DevOps server ELICITS — asks the user a
+   * question mid-call — when `project` is missing, and an elicitation a client
+   * cannot answer is a failed call, so the runtime supplies it up front.
+   */
+  defaultArgs?: Record<string, unknown>;
 }
 
 export type SessionFactory = (spec: ServerSpec) => Promise<McpSession>;
@@ -110,6 +117,8 @@ export class McpToolClient implements ToolClient {
         if (entry.scopeArgs) d.scopeArgs = entry.scopeArgs;
         if (entry.actionArg) d.actionArg = entry.actionArg;
         if (entry.actions) d.actions = entry.actions;
+        const defaults = pickKnown(spec.defaultArgs, t.inputSchema);
+        if (defaults) d.defaultArgs = defaults;
         this.descriptors.push(d);
       }
     }
@@ -146,6 +155,18 @@ export class McpToolClient implements ToolClient {
     this.connected = false;
     this.descriptors = [];
   }
+}
+
+/** Only pass a default the tool actually declares, or the server rejects the call. */
+function pickKnown(
+  defaults: Record<string, unknown> | undefined,
+  schema: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!defaults) return undefined;
+  const props = (schema?.["properties"] ?? {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(defaults)) if (k in props) out[k] = v;
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**

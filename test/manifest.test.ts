@@ -122,6 +122,7 @@ describe("the manifest applied to the recorded MCP tool surface", () => {
     repos: [],
     test_plans: ["Sandbox Plan", "1"],
     branches_writable: ["agent/*"],
+    urls: ["http://localhost:3100"],
   };
 
   /** Rebuild the real descriptors from the recorded discovery report. */
@@ -164,6 +165,7 @@ describe("the manifest applied to the recorded MCP tool surface", () => {
         if (sa?.testPlan) args[sa.testPlan] = "Sandbox Plan";
         if (sa?.repo) args[sa.repo] = "orders-web";
         if (sa?.branch) args[sa.branch] = "agent/x";
+        if (sa?.url) args[sa.url] = "http://localhost:3100/#/login";
         const v = gate.judge({ toolName: q, args }, t);
         if (v.decision !== "refuse") admitted.push(`${a ? `${q}.${a}` : q} → ${v.decision}`);
       }
@@ -185,10 +187,13 @@ describe("the manifest applied to the recorded MCP tool surface", () => {
       "ado.wit_work_item_comment_write.add → ask",
       "playwright.browser_console_messages → execute",
       "playwright.browser_find → execute",
+      "playwright.browser_navigate → execute",
+      "playwright.browser_navigate_back → execute",
       "playwright.browser_network_request → execute",
       "playwright.browser_network_requests → execute",
       "playwright.browser_snapshot → execute",
       "playwright.browser_take_screenshot → execute",
+      "playwright.browser_wait_for → execute",
     ]);
     // repo_create_branch is classified but out of reach: repos is empty here.
     expect(admitted.some((a) => a.startsWith("ado.repo_create_branch"))).toBe(false);

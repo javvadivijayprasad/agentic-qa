@@ -11,7 +11,7 @@ import { runLoop, type LoopResult } from "../../src/runtime/loop.js";
 import { ScriptedModel } from "../../src/runtime/model.js";
 import { StubTools } from "../../src/runtime/tools.js";
 import type { AgentConfig, Skill } from "../../src/types.js";
-import { DEFAULT_POLICY } from "../../src/types.js";
+import { DEFAULT_CAPABILITIES, DEFAULT_POLICY } from "../../src/types.js";
 import { ScriptedVerifier } from "../../src/verify/scripted.js";
 
 export const FIXTURE_RUN_ID = "20260912T160000Z-fixture1";
@@ -28,8 +28,10 @@ export const fixtureConfig: AgentConfig = {
     repos: ["orders-web"],
     test_plans: ["Sandbox Plan"],
     branches_writable: ["agent/*"],
+    urls: [],
   },
   policy: DEFAULT_POLICY,
+  capabilities: DEFAULT_CAPABILITIES,
 };
 
 const schema = (props: Record<string, string>) => ({
