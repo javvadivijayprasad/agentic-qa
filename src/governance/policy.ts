@@ -308,7 +308,7 @@ function escapeRe(s: string): string {
  *   - a prefix — `https://staging.example.com/app` allows that path and below;
  *   - a glob — `https://*.staging.example.com/*`;
  *   - `"*"`, honoured only in sandbox mode.
- * Matching is on the parsed origin plus path, so `http://localhost:3100@evil.com`
+ * Matching is on the parsed origin plus path, so `http://localhost:3100@attacker.example`
  * and a differing port or scheme do not sneak through a string prefix test.
  *
  * WHAT THIS DOES NOT COVER, and it matters: only a navigation carries a URL

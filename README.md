@@ -172,13 +172,14 @@ Deliberate limits, not missing features:
 
 ## Documentation
 
-| doc                                  | for                                                      |
-| ------------------------------------ | -------------------------------------------------------- |
-| [Usage](docs/USAGE.md)               | installing, configuring, running, reading a ledger       |
-| [Functional](docs/FUNCTIONAL.md)     | what it does, capability by capability                   |
-| [Architecture](docs/ARCHITECTURE.md) | the design decisions, and the trade-offs behind them     |
-| [Technical](docs/TECHNICAL.md)       | components, contracts, event shapes, extension points    |
-| [CHANGELOG](CHANGELOG.md)            | every change, with the observed failure that prompted it |
+| doc                                        | for                                                      |
+| ------------------------------------------ | -------------------------------------------------------- |
+| [Usage](docs/USAGE.md)                     | installing, configuring, running, reading a ledger       |
+| [How a run works](docs/HOW-A-RUN-WORKS.md) | every stage of one real run, in order                    |
+| [Functional](docs/FUNCTIONAL.md)           | what it does, capability by capability                   |
+| [Architecture](docs/ARCHITECTURE.md)       | the design decisions, and the trade-offs behind them     |
+| [Technical](docs/TECHNICAL.md)             | components, contracts, event shapes, extension points    |
+| [CHANGELOG](CHANGELOG.md)                  | every change, with the observed failure that prompted it |
 
 ## Status
 

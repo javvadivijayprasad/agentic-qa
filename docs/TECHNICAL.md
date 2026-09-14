@@ -2,8 +2,9 @@
 
 Components, contracts, event shapes, and the three places you extend this.
 
-For _why_ any of it is shaped this way, see [ARCHITECTURE.md](ARCHITECTURE.md). For running it, see
-[USAGE.md](USAGE.md).
+For _why_ any of it is shaped this way, see [ARCHITECTURE.md](ARCHITECTURE.md). For a narrative
+walkthrough of one run, stage by stage, see [HOW-A-RUN-WORKS.md](HOW-A-RUN-WORKS.md). For running
+it, see [USAGE.md](USAGE.md).
 
 ---
 
@@ -192,9 +193,12 @@ defined-but-blank value is otherwise a long afternoon).
 3. **Destructive name raise.** `delete`, `purge`, `unlink`, `remove`, … in the tool _or action_ name
    → `destructive`, whatever the manifest said.
 4. **Protected branch raise.** `main`, `master`, `release`, `production`, `prod` → `destructive`.
-5. **URL scope.** If `scopeArgs.url` is declared, the value is parsed and its origin plus path
-   matched against `agent.scope.urls`. Parsed, not string-prefixed — so
-   `http://localhost:3100@evil.com/` does not match `http://localhost:3100`.
+5. **URL scope.** If `scopeArgs.url` is declared, the value is parsed and its origin plus path are
+   matched against `agent.scope.urls` — parsed, never string-prefixed. In a URL everything before
+   an `@` is credentials rather than the host, so `http://localhost:3100@attacker.example/` really
+   points at `attacker.example`, with `localhost` as a username. A `startsWith` check would admit
+   it; comparing the parsed `origin` does not. A different scheme or port is a different origin for
+   the same reason.
 6. **Scope allow-lists.** `workItem`, `repo`, `testPlan`, `branch` arguments checked against config.
    A list argument is checked element by element; every element must be in scope.
 7. **Policy table.** The final class → `execute` | `ask` | `refuse`.

@@ -353,10 +353,10 @@ describe("matchesUrl", () => {
   });
 
   it("cannot be fooled by a prefix that is not an origin", () => {
-    // classic userinfo trick: the real host here is evil.com
-    expect(matchesUrl("http://localhost:3100@evil.com/", allowed)).toBe(false);
-    expect(matchesUrl("http://localhost:3100.evil.com/", allowed)).toBe(false);
-    expect(matchesUrl("https://staging.example.com.evil.com/app", allowed)).toBe(false);
+    // classic userinfo trick: the real host here is attacker.example
+    expect(matchesUrl("http://localhost:3100@attacker.example/", allowed)).toBe(false);
+    expect(matchesUrl("http://localhost:3100.attacker.example/", allowed)).toBe(false);
+    expect(matchesUrl("https://staging.example.com.attacker.example/app", allowed)).toBe(false);
   });
 
   it("honours a path prefix, and does not leak to a sibling path", () => {

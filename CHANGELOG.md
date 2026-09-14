@@ -169,7 +169,7 @@ terminal|file`, and the loop's status as the exit code. `ToolingDeps.buildModel`
   entry may be an origin (allowing every path under it), a path prefix, or a glob; `"*"` only in
   sandbox mode. Empty means the agent may not browse at all. Existing configs must add the key.
 - `matchesUrl()` matches on the parsed origin plus path, so a differing scheme, host or port is out
-  of scope and a userinfo prefix (`http://localhost:3100@evil.com`) cannot sneak through a string
+  of scope and a userinfo prefix (`http://localhost:3100@attacker.example`) cannot sneak through a string
   test. `ScopeArgs.url` carries the argument name; `ScopedGate` checks it before the class table.
 - Playwright browser tools classified — **exploration only**. `browser_navigate` (scope-checked),
   `browser_navigate_back`, `browser_snapshot`, `browser_find`, `browser_wait_for`,
