@@ -53,12 +53,16 @@ Usage:
       Reads .env for credentials. Makes NO tool calls — listTools() only.
 
   aqa run "<request>" --config <ai-quality.config.yaml> [--ledger .aqa]
-          [--approval terminal|file] [--work-item <id>] [--dry-run]
+          [--approval terminal|file] [--approval-timeout <seconds>]
+          [--work-item <id>] [--dry-run]
           [--servers ...] [--workspace .] [--env .env]
       Run the agent loop. The work item comes from the request ("AB#1") unless
       --work-item says otherwise, and must be in agent.scope.work_items.
       --dry-run: load config, connect servers, list tools with their gate class,
       make no model or tool calls, exit 0.
+      --approval file: each batch is written to <ledger>/runs/<id>/approvals/<approvalId>.json
+      with decision:null; set "decision" to "approved" or "denied" (and optionally "by")
+      to answer. Silence past --approval-timeout (default 1800s) counts as denied.
       Exit codes: 0 done, 1 error, 2 blocked, 3 refused, 4 budget.
 
   aqa --version | -v      aqa --help | -h
@@ -344,9 +348,25 @@ async function live(
   }
 
   const ledger = new Ledger(flag(args, "--ledger") ?? ".aqa", newRunId());
+  // How long `--approval file` waits before treating silence as "no". The
+  // default suits a person who stepped away; a joint smoke or a CI run wants
+  // seconds, not half an hour, so it is a flag rather than a constant.
+  const approvalTimeout = flag(args, "--approval-timeout");
+  let timeoutMs: number | undefined;
+  if (approvalTimeout !== undefined) {
+    const seconds = Number(approvalTimeout);
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      io.err("aqa run: --approval-timeout must be a positive number of seconds\n");
+      return 1;
+    }
+    timeoutMs = Math.round(seconds * 1000);
+  }
   const approver =
     approvalMode === "file"
-      ? new FileApprover({ dir: join(ledger.dir, APPROVALS_DIR) })
+      ? new FileApprover({
+          dir: join(ledger.dir, APPROVALS_DIR),
+          ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+        })
       : new TerminalApprover();
 
   const {

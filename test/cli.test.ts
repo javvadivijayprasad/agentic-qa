@@ -322,3 +322,30 @@ describe("aqa run: credential provenance", () => {
     }
   });
 });
+
+describe("--approval-timeout", () => {
+  it("rejects a value that is not a positive number of seconds", async () => {
+    const dir = tmp();
+    const cfg = join(dir, "c.json");
+    writeFileSync(cfg, JSON.stringify({ agent: { scope: { work_items: ["1"] } } }));
+    for (const bad of ["0", "-5", "soon"]) {
+      const { cli, buf } = io();
+      const code = await run(
+        [
+          "Write tests for AB#1",
+          "--config",
+          cfg,
+          "--env",
+          join(dir, "no.env"),
+          "--approval",
+          "file",
+          "--approval-timeout",
+          bad,
+        ],
+        cli,
+      );
+      expect(code).toBe(1);
+      expect(buf.err).toMatch(/positive number of seconds/);
+    }
+  });
+});

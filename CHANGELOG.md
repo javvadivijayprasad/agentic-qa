@@ -328,3 +328,21 @@ different clothes: a check that asks "did this run DO the thing" rather than "is
   and then discarded — so per-test durations, retries and error stacks, exactly what failure triage
   needs, were never persisted at all. Best-effort: a workspace that cannot be written still returns
   a usable summary.
+
+### Added (A9 — the file-approval contract)
+
+- **`--approval-timeout <seconds>`** on `aqa run`. Contract addition, optional, default 1800. With
+  `--approval file` nobody is at a keyboard, and silence past the timeout becomes
+  `{ decision: "denied", by: "timeout" }` so an unattended run cannot sit forever holding a browser
+  and two MCP servers open. A joint smoke or a CI run wants seconds, not half an hour.
+- **Four tests covering the platform's path end to end** — the loop asks, the ledger announces, a
+  simulated platform answers by writing the file, the run carries on. They pin the parts the other
+  track depends on: approve → `done` with the approver recorded, deny → `blocked` with the call
+  never made, silence → `blocked` by `timeout`, and the request file carrying the whole batch.
+- **Documented the ordering race**: `approval_requested` is appended to the ledger _before_ the
+  approver writes `approvals/<id>.json`, so a platform that stats the file the instant it sees the
+  event will sometimes find nothing. "Not there yet" means still arriving. There is a test for the
+  ordering, because this is the kind of race that appears once in fifty runs and gets blamed on
+  something else.
+- `docs/HANDOFF_A9_2026-09-14.md`: the full contract, the four things to get right, the status/exit
+  table, and the smoke script.
