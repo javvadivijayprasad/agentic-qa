@@ -61,13 +61,17 @@ npm run release:check
 
 `npm pack --dry-run` prints the exact file list. Read it. You are looking for two things:
 
-- **Everything needed is there** — `dist/`, `docs/`, `README.md`, `CHANGELOG.md`, `LICENSE`,
-  `CITATION.cff`, and `examples/fixture-ledger/` (the platform track builds against that fixture).
+- **Everything needed is there** — `dist/`, the seven user-facing files under `docs/`, `README.md`,
+  `CHANGELOG.md`, `LICENSE`, `CITATION.cff`, and `examples/fixture-ledger/` (the platform track
+  builds against that fixture).
 - **Nothing private is there** — no `.env`, no `.aqa/`, no `node_modules`, no `test/`, no
   `examples/sandbox/tests/`.
+- **Nothing internal is there** — the `docs/HANDOFF_*.md` notes, `docs/tools-observed.*` and the HTML
+  diagrams are working material, not documentation. They are excluded by name.
 
-The `files` allow-list in `package.json` is what controls this. It is an allow-list, not a deny-list,
-so the failure mode is a missing file rather than a leaked one — but check anyway.
+The `files` allow-list in `package.json` is what controls this. It lists the seven docs individually
+rather than the whole `docs/` folder, precisely so that adding a working note to that folder does not
+silently add it to the next release. If you add a doc that users should get, add it to the list too.
 
 ---
 
@@ -80,7 +84,7 @@ as `dev` that the runtime actually needs.
 ```bash
 npm pack                                  # writes vijaypjavvadi-agentic-qa-<version>.tgz
 
-mkdir /tmp/aqa-check && cd /tmp/aqa-check
+mkdir /tmp/aqa-check && cd /tmp/aqa-check       # Windows: cd /d C:\temp\aqa-check
 npm init -y >/dev/null
 npm install /path/to/vijaypjavvadi-agentic-qa-<version>.tgz
 
@@ -94,6 +98,10 @@ package — no network, no model, no Azure DevOps. If it prints a readable repor
 sound.
 
 Then delete the scratch directory. Do not commit the `.tgz`.
+
+**On Windows, `cd` alone will not leave the current drive.** `cd C:\temp\aqa-check` from an `E:`
+prompt creates nothing and moves nowhere visible — and the `npm init -y` that follows then rewrites
+the project's own `package.json`. Use `cd /d`, and check `git status` if you suspect it happened.
 
 ---
 

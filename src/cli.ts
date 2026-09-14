@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { createRequire } from "node:module";
 import { readLedgerFile, LEDGER_FILE } from "./ledger/ledger.js";
 import { renderMarkdown } from "./ledger/replay.js";
 import {
@@ -31,7 +32,26 @@ import { ScopedGate, matchesAny } from "./governance/policy.js";
 import { mask, scrub } from "./governance/scrub.js";
 import type { ToolClient } from "./runtime/tools.js";
 
-export const VERSION = "0.1.0-dev.0";
+/**
+ * The published version, read from `package.json` rather than written here.
+ *
+ * A hand-maintained copy drifts the moment someone runs `npm version`: the tarball
+ * says one thing and `aqa --version` says another, which makes a bug report from a
+ * user impossible to place against a commit. `package.json` sits one level above
+ * both `dist/cli.js` and `src/cli.ts`, so the same path resolves from a build, from
+ * a global install, and from `tsx`.
+ */
+function packageVersion(): string {
+  try {
+    const require = createRequire(import.meta.url);
+    const pkg = require("../package.json") as { version?: unknown };
+    return typeof pkg.version === "string" ? pkg.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+export const VERSION = packageVersion();
 
 /** In-process adapters, by `--servers` name. */
 export const LOCAL_SERVERS = ["fs", "bdd2pw", "pw", "tcg", "synthdata"];

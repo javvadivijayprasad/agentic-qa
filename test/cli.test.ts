@@ -9,11 +9,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveLedgerFile, main, discover, run, type CliIo } from "../src/cli.js";
+import { resolveLedgerFile, main, discover, run, VERSION, type CliIo } from "../src/cli.js";
 import { StubTools } from "../src/runtime/tools.js";
 import { ScriptedModel } from "../src/runtime/model.js";
 
 const FIXTURE_DIR = join(process.cwd(), "examples", "fixture-ledger");
+const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as {
+  version: string;
+};
 const tmp = () => mkdtempSync(join(tmpdir(), "aqa-cli-"));
 
 function io() {
@@ -59,7 +62,13 @@ describe("aqa replay", () => {
     expect(await main(["--help"], cli)).toBe(0);
     expect(buf.out).toContain("aqa discover");
     expect(await main(["--version"], cli)).toBe(0);
-    expect(buf.out).toMatch(/0\.1\.0/);
+    expect(buf.out).toContain(`${pkg.version}\n`);
+  });
+  it("--version is exactly the published version, not a loose match", () => {
+    // A substring assertion let "0.1.0-dev.0" pass as "0.1.0" through a whole
+    // release. What a user reports must name a commit exactly.
+    expect(VERSION).toBe(pkg.version);
+    expect(VERSION).not.toMatch(/dev|0\.0\.0/);
   });
 });
 

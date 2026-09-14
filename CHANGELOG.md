@@ -12,6 +12,18 @@ project and a real application, with the governance gate, ledger, replay and ver
 Packaging: `publishConfig.access: public` stated explicitly, documentation shipped in the tarball,
 and `prepublishOnly` now runs lint as well as typecheck, tests and build.
 
+### Fixed (found by the pre-publish tarball check)
+
+- `aqa --version` reported `0.1.0-dev.0`. The version was a string literal in `src/cli.ts`, so
+  `npm version` bumped `package.json` and left the CLI reporting the last value anyone typed. It is
+  now read from `package.json` at runtime, and a test asserts the two are equal. The test that
+  should have caught this matched `/0\.1\.0/`, which `0.1.0-dev.0` satisfies — a substring assertion
+  on a version number is not an assertion. Found by installing the tarball into a clean directory,
+  which is the only step that exercises the package as a user receives it.
+- The `files` allow-list shipped `docs/` wholesale, putting eleven internal `HANDOFF_*.md` notes and
+  a 272 kB observed-tool dump into the tarball — more than half its size. The seven user-facing docs
+  are now listed individually, so a working note added to `docs/` cannot silently join a release.
+
 Everything below is the development history that produced it.
 
 ### Added (A0 — scaffold)

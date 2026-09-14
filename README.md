@@ -179,6 +179,7 @@ Deliberate limits, not missing features:
 
 | doc                                        | for                                                      |
 | ------------------------------------------ | -------------------------------------------------------- |
+| [Adoption](docs/ADOPTION.md)               | what a team has to change, who does it, in what order    |
 | [Usage](docs/USAGE.md)                     | installing, configuring, running, reading a ledger       |
 | [How a run works](docs/HOW-A-RUN-WORKS.md) | every stage of one real run, in order                    |
 | [Functional](docs/FUNCTIONAL.md)           | what it does, capability by capability                   |
