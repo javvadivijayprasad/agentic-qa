@@ -179,6 +179,7 @@ Deliberate limits, not missing features:
 | [Functional](docs/FUNCTIONAL.md)           | what it does, capability by capability                   |
 | [Architecture](docs/ARCHITECTURE.md)       | the design decisions, and the trade-offs behind them     |
 | [Technical](docs/TECHNICAL.md)             | components, contracts, event shapes, extension points    |
+| [Releasing](docs/RELEASING.md)             | cutting a version and publishing it                      |
 | [CHANGELOG](CHANGELOG.md)                  | every change, with the observed failure that prompted it |
 
 ## Status
@@ -209,8 +210,12 @@ npm run fixture:make && git diff --exit-code   # the golden ledger must not drif
 
 ## Citation
 
-See `CITATION.cff`. Vijay Prasad Javvadi, Independent Researcher, Plainsboro, NJ, USA
-(ORCID [0009-0004-1192-6906](https://orcid.org/0009-0004-1192-6906)).
+If you use this in published work, cite it with the metadata in
+[`CITATION.cff`](CITATION.cff) — GitHub renders a "Cite this repository" button from it, and most
+reference managers import it directly.
+
+Vijay Prasad Javvadi, Independent Researcher, Plainsboro, NJ, USA · ORCID
+[0009-0004-1192-6906](https://orcid.org/0009-0004-1192-6906).
 
 ## License
 

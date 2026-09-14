@@ -2,12 +2,36 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "agentic-qa: an MCP-based agentic QA runtime with a governance gate and replayable ledger"
+abstract: >-
+  A runtime for agentic software testing in which a language model proposes tool
+  calls but decides nothing. Every proposed call is classified against a manifest
+  and resolved by an operator-owned policy table into execute, ask, or refuse; an
+  unclassified operation is refused by default. Completion is decided by code that
+  reads the run's evidence rather than by the model's own account of itself. Each
+  cycle is reassembled from an append-only JSONL ledger rather than from a
+  conversation, so a run can be replayed offline and every reported figure traces
+  to a recorded event. The reference skill turns a user story's acceptance criteria
+  into executable Playwright tests and records the resulting test cases against the
+  story in Azure DevOps.
 authors:
   - family-names: Javvadi
     given-names: Vijay Prasad
     orcid: "https://orcid.org/0009-0004-1192-6906"
     affiliation: "Independent Researcher, Plainsboro, NJ, USA"
-version: 0.1.0-dev.0
-date-released: 2026-09-12
+    email: vijay@vijayjavvadiresearch.ai
+version: 0.1.0
+date-released: "2026-09-14"
 license: MIT
 repository-code: "https://github.com/javvadivijayprasad/agentic-qa"
+url: "https://github.com/javvadivijayprasad/agentic-qa#readme"
+keywords:
+  - agentic AI
+  - software testing
+  - test automation
+  - Model Context Protocol
+  - AI governance
+  - auditability
+  - provenance
+  - Playwright
+  - Azure DevOps
+  - requirements traceability

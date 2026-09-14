@@ -4,7 +4,15 @@ All notable changes to this project will be documented in this file. Format: Kee
 versioning: SemVer. Any change to the contract (PLAN §0: CLI flags, exit codes, env vars,
 config schema, ledger event shapes, approval file mode, artefact paths) is a MAJOR bump.
 
-## [Unreleased] — 0.1.0-dev.0
+## [0.1.0] — 2026-09-14
+
+First public release. One skill — `story-to-tests` — working end to end against a live Azure DevOps
+project and a real application, with the governance gate, ledger, replay and verifier behind it.
+
+Packaging: `publishConfig.access: public` stated explicitly, documentation shipped in the tarball,
+and `prepublishOnly` now runs lint as well as typecheck, tests and build.
+
+Everything below is the development history that produced it.
 
 ### Added (A0 — scaffold)
 
