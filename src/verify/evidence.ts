@@ -14,6 +14,19 @@ import type {
  */
 export interface CallRecord {
   eventId: number;
+  /**
+   * SERVER-QUALIFIED, e.g. "ado.wit_work_item" — the same spelling the gate,
+   * the manifest and a skill's `allowedTools` use, so a verifier can name a
+   * tool the one way it is named everywhere else.
+   *
+   * A `call` event stores `server` and `toolName` separately and the toolName
+   * bare ("wit_work_item"), so it is joined back together here. This was a real
+   * bug: the verifier compared qualified names against bare ones, matched
+   * nothing, and reported every check as "never attempted" on a run that had
+   * done all of them. The unit fixtures had encoded the qualified spelling that
+   * the loop never actually writes, so the whole suite was green while the
+   * verifier could not pass a single check against a real ledger.
+   */
   toolName: string;
   server: string;
   /** The `action` argument for action-multiplexed tools, when present. */
@@ -39,7 +52,7 @@ export function completedCalls(events: AnyRunEvent[]): CallRecord[] {
     const action = typeof p.args["action"] === "string" ? p.args["action"] : undefined;
     out.push({
       eventId: call.eventId,
-      toolName: p.toolName,
+      toolName: qualifiedName(p.server, p.toolName),
       server: p.server,
       action,
       args: p.args,
@@ -49,6 +62,16 @@ export function completedCalls(events: AnyRunEvent[]): CallRecord[] {
     });
   }
   return out;
+}
+
+/**
+ * `server` + bare name → "server.name". A ledger written by an older build (or
+ * a hand-built fixture) may already carry the qualified spelling; qualifying it
+ * twice would produce "ado.ado.wit_work_item" and break exactly the comparison
+ * this exists to fix, so an already-prefixed name is left alone.
+ */
+function qualifiedName(server: string, toolName: string): string {
+  return toolName.startsWith(`${server}.`) ? toolName : `${server}.${toolName}`;
 }
 
 /** Successful calls of one tool, optionally narrowed to one action. */

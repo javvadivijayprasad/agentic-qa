@@ -9,6 +9,15 @@ import {
 } from "../src/verify/story-to-tests.js";
 import { completedCalls, successful, artefacts, refusals } from "../src/verify/evidence.js";
 import type { AnyRunEvent } from "../src/types.js";
+import { Ledger } from "../src/ledger/ledger.js";
+import { TableGate } from "../src/governance/policy.js";
+import { ScriptedApprover } from "../src/runtime/approval.js";
+import { SteppingClock } from "../src/runtime/clock.js";
+import { runLoop } from "../src/runtime/loop.js";
+import { ScriptedModel } from "../src/runtime/model.js";
+import { StubTools } from "../src/runtime/tools.js";
+import { ScriptedVerifier } from "../src/verify/scripted.js";
+import { fixtureConfig } from "../examples/fixture-ledger/scenario.js";
 
 const tmp = () => mkdtempSync(join(tmpdir(), "aqa-vfy-"));
 
@@ -33,8 +42,11 @@ function ledger(
       eventId: callId,
       kind: "call",
       payload: {
+        // The shape the LOOP writes: server separate, tool name bare. Getting
+        // this wrong here is how the verifier shipped unable to match a single
+        // call against a real ledger while every test was green.
         server: e.tool.split(".")[0] as string,
-        toolName: e.tool,
+        toolName: e.tool.slice(e.tool.indexOf(".") + 1),
         args: e.args ?? {},
         startedAt: 0,
       },
@@ -347,5 +359,170 @@ describe("a skipped check is recorded, not silently dropped", () => {
       workspaceDir: "/tmp",
     });
     expect(v.limitations).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The test that would have caught the bug the hand-built fixtures hid: run the
+// REAL loop, hand its ledger to the REAL verifier. Every fixture above encodes
+// an assumption about the event shape; this one encodes none.
+// ---------------------------------------------------------------------------
+
+describe("end to end: a ledger written by the loop satisfies the verifier", () => {
+  const ws = () => {
+    const dir = tmp();
+    mkdirSync(join(dir, "tests"), { recursive: true });
+    writeFileSync(join(dir, "tests", "login.spec.ts"), "// generated\n");
+    return dir;
+  };
+
+  it("reads back every call the loop recorded", async () => {
+    const workspaceDir = ws();
+    const led = new Ledger(tmp(), "run-e2e");
+
+    const tools = new StubTools()
+      .add(
+        {
+          server: "ado",
+          name: "wit_work_item",
+          description: "",
+          inputSchema: {},
+          policyClass: "read",
+        },
+        { ok: true, result: { id: 1, fields: {} }, artefacts: [] },
+      )
+      .add(
+        {
+          server: "pw",
+          name: "run_tests",
+          description: "",
+          inputSchema: {},
+          policyClass: "write_workspace",
+        },
+        {
+          ok: true,
+          result: { passed: 5, failed: 0, skipped: 0, green: true, failures: [] },
+          artefacts: [],
+        },
+      )
+      .add(
+        {
+          server: "fs",
+          name: "write_file",
+          description: "",
+          inputSchema: {},
+          policyClass: "write_workspace",
+        },
+        { ok: true, result: { written: true }, artefacts: ["tests/login.spec.ts"] },
+      )
+      .add(
+        {
+          server: "ado",
+          name: "testplan_test_case_write",
+          description: "",
+          inputSchema: {},
+          policyClass: "write_record",
+        },
+        { ok: true, result: { id: 17 }, artefacts: [] },
+      );
+
+    const u = { inputTokens: 10, outputTokens: 1 };
+    const model = new ScriptedModel({
+      plan: { steps: [], usage: u },
+      decisions: [
+        { calls: [{ toolName: "ado.wit_work_item", args: { action: "get", id: "1" } }], usage: u },
+        { calls: [{ toolName: "fs.write_file", args: { path: "tests/login.spec.ts" } }], usage: u },
+        { calls: [{ toolName: "pw.run_tests", args: {} }], usage: u },
+        {
+          calls: [
+            {
+              toolName: "ado.testplan_test_case_write",
+              args: { action: "create", title: "AC-1", testsWorkItemId: 1 },
+            },
+          ],
+          usage: u,
+        },
+        { calls: [], usage: u },
+      ],
+    });
+
+    const verifier = new StoryToTestsVerifier({ workItem: "1", requireSuiteMembership: false });
+
+    const result = await runLoop({
+      requestText: "Write tests for AB#1",
+      model,
+      tools,
+      gate: new TableGate(),
+      approver: new ScriptedApprover([], {
+        decision: "approved",
+        by: "tester",
+        at: "2026-01-01T00:00:00Z",
+      }),
+      skill: {
+        name: "story-to-tests",
+        instructions: "",
+        allowedTools: [
+          "ado.wit_work_item",
+          "fs.write_file",
+          "pw.run_tests",
+          "ado.testplan_test_case_write",
+        ],
+        verifier,
+      },
+      ledger: led,
+      config: { ...fixtureConfig, budgets: { steps: 20, tokens: 100_000 } },
+      workspaceDir,
+      clock: new SteppingClock(1_000_000, 10),
+    });
+
+    expect(result.status).toBe("done");
+  });
+
+  it("names tools the same way the gate and the manifest do", async () => {
+    const led = new Ledger(tmp(), "run-name");
+    const tools = new StubTools().add(
+      {
+        server: "ado",
+        name: "wit_work_item",
+        description: "",
+        inputSchema: {},
+        policyClass: "read",
+      },
+      { ok: true, result: { id: 1 }, artefacts: [] },
+    );
+    const u = { inputTokens: 10, outputTokens: 1 };
+    await runLoop({
+      requestText: "x",
+      model: new ScriptedModel({
+        plan: { steps: [], usage: u },
+        decisions: [
+          { calls: [{ toolName: "ado.wit_work_item", args: { action: "get" } }], usage: u },
+          { calls: [], usage: u },
+        ],
+      }),
+      tools,
+      gate: new TableGate(),
+      approver: new ScriptedApprover([], {
+        decision: "approved",
+        by: "t",
+        at: "2026-01-01T00:00:00Z",
+      }),
+      skill: {
+        name: "t",
+        instructions: "",
+        allowedTools: ["ado.wit_work_item"],
+        verifier: new ScriptedVerifier([{ done: true, gaps: [] }]),
+      },
+      ledger: led,
+      config: { ...fixtureConfig, budgets: { steps: 5, tokens: 100_000 } },
+      workspaceDir: "/tmp",
+      clock: new SteppingClock(1_000_000, 10),
+    });
+
+    const calls = completedCalls(led.read());
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.toolName).toBe("ado.wit_work_item");
+    expect(calls[0]!.server).toBe("ado");
+    expect(calls[0]!.action).toBe("get");
   });
 });

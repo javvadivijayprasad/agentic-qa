@@ -36,7 +36,12 @@ agent:
     # argument or permission change fixes it. Set false on such an account: the
     # run then creates cases linked to the story, skips the plan and suite, and
     # records the omission in the verify event.
-    test_plans: true
+    #
+    # false here because the sandbox organisation is on Basic: runs
+    # 20260914T015933Z-4a2806d0 and 20260914T031912Z-91b0bc56 both answered
+    # "not authorized" to create, with a PAT that already carries Test
+    # Management (read & write) — so it is the access level, not the token.
+    test_plans: false
   policy:
     read: execute
     write_workspace: execute

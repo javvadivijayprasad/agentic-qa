@@ -243,3 +243,19 @@ failing run is what diagnosed it; the run ids are cited so the evidence can be r
   most of it the fixed tool schemas.
 - Fixture regenerated: `agent.capabilities` changes the config hash in the `request` event. Still
   42 events, no shape change.
+
+### Fixed (A8c — the verifier could never pass on a real ledger)
+
+- **`completedCalls()` now returns the server-qualified tool name.** A `call` event stores `server`
+  and `toolName` separately, with the tool name bare (`wit_work_item`); the verifier compared it
+  against the qualified spelling everything else uses (`ado.wit_work_item`), matched nothing, and
+  reported every check as "never attempted". Observed in run `20260914T032555Z-366ff951`: the story
+  was read, the suite ran 5/0/0 green, four cases were created — and the verifier answered
+  `story-not-read, suite-not-run, no-test-cases`. An already-qualified name is left alone, so a
+  ledger from an older build still reads.
+- **The unit fixtures had encoded the wrong shape**, writing the qualified name into a `call` event
+  the loop would have written bare. That is why 223 tests were green while the verifier could not
+  pass a single check against a real run. The fixture builder now writes what the loop writes.
+- **Added an end-to-end test** that runs the real loop and hands its ledger to the real verifier.
+  Every other fixture in the suite encodes an assumption about the event shape; this one encodes
+  none, and is the test that would have caught this.
