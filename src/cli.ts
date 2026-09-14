@@ -26,6 +26,7 @@ import { Bdd2PwTools } from "./mcp/adapters/bdd2pw.js";
 import { PwTools } from "./mcp/adapters/pw.js";
 import { TcgTools } from "./mcp/adapters/tcg.js";
 import { SynthdataTools } from "./mcp/adapters/synthdata.js";
+import { SummaryTools } from "./mcp/adapters/summary.js";
 import { ScopedGate, matchesAny } from "./governance/policy.js";
 import { mask, scrub } from "./governance/scrub.js";
 import type { ToolClient } from "./runtime/tools.js";
@@ -348,7 +349,11 @@ async function live(
       ? new FileApprover({ dir: join(ledger.dir, APPROVALS_DIR) })
       : new TerminalApprover();
 
-  const { tools, close, workspace } = await buildTooling(args, io, deps, config.scope.urls);
+  const {
+    tools: mcpTools,
+    close,
+    workspace,
+  } = await buildTooling(args, io, deps, config.scope.urls);
   try {
     const planName = config.scope.test_plans[0];
     // An account without the Test Plans access level cannot create a plan or a
@@ -360,6 +365,24 @@ async function live(
       ...(canCreatePlans && planName ? { testPlan: planName } : {}),
       ...(canCreatePlans ? {} : { requireSuiteMembership: false }),
     });
+    // The run's own report, counted from the ledger rather than written by the
+    // model. Composed here because it needs the ledger, which buildTooling does
+    // not and should not know about.
+    const tools = new CompositeTools([
+      mcpTools,
+      new SummaryTools(ledger, {
+        workItem,
+        ...(canCreatePlans
+          ? {}
+          : {
+              limitations: [
+                "test suite membership — this Azure DevOps account has no Test Plans access level, " +
+                  "so the cases are linked to the story but no suite contains them",
+              ],
+            }),
+      }),
+    ]);
+
     if (!deps.buildModel && !env.anthropicApiKey)
       throw new ConfigError("ANTHROPIC_API_KEY is not set");
     const model =

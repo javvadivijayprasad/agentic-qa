@@ -101,3 +101,16 @@ describe("story-to-tests without the Test Plans access level", () => {
     expect(skill.instructions).toContain("not authorized");
   });
 });
+
+describe("the grain of a test case is stated, not left to chance", () => {
+  const skill = storyToTestsSkill({ workItem: "1" });
+
+  it("says one case per acceptance criterion, whatever the test count", () => {
+    expect(skill.instructions).toContain("ONE CASE PER ACCEPTANCE CRITERION");
+    expect(skill.instructions).toContain("Never create a case per test");
+  });
+
+  it("allows the scenario count to differ from the case count", () => {
+    expect(skill.instructions).toMatch(/[Tt]ests are per behaviour, test cases are per criterion/);
+  });
+});

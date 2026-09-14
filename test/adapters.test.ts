@@ -294,3 +294,40 @@ describe("pw: unsafe arguments", () => {
     expect((await pw.call("pw", "run_tests", { grep: 'AC-1" & del *' })).ok).toBe(false);
   });
 });
+
+describe("the Playwright report is kept, not just parsed", () => {
+  it("writes the reporter's JSON into the workspace and records it as an artefact", async () => {
+    const ws = mkdtempSync(join(tmpdir(), "aqa-pwrep-"));
+    const report = JSON.stringify({
+      stats: { expected: 2, unexpected: 0, skipped: 0, flaky: 0 },
+      suites: [],
+    });
+    const pw = new PwTools(ws, {
+      runner: async () => ({ code: 0, stdout: report, stderr: "" }),
+    });
+    const r = await pw.call("pw", "run_tests", {});
+    expect(r.ok).toBe(true);
+    expect(r.artefacts).toEqual([join(".aqa-report", "playwright.json")]);
+    const written = readFileSync(join(ws, ".aqa-report", "playwright.json"), "utf8");
+    expect(JSON.parse(written)).toMatchObject({ stats: { expected: 2 } });
+  });
+
+  it("still reports a summary when the report cannot be written", async () => {
+    // A workspace path that is a FILE, so creating .aqa-report/ under it fails
+    // with ENOTDIR. Keeping the report is evidence we would like, not evidence
+    // the run depends on.
+    const file = join(mkdtempSync(join(tmpdir(), "aqa-pwrep-")), "not-a-dir");
+    writeFileSync(file, "x");
+    const pw = new PwTools(file, {
+      runner: async () => ({
+        code: 0,
+        stdout: JSON.stringify({ stats: { expected: 1 }, suites: [] }),
+        stderr: "",
+      }),
+    });
+    const r = await pw.call("pw", "run_tests", {});
+    expect(r.ok).toBe(true);
+    expect((r.result as { passed: number }).passed).toBe(1);
+    expect(r.artefacts).toEqual([]);
+  });
+});

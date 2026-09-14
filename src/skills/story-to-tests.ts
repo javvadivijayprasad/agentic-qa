@@ -15,6 +15,7 @@ export const STORY_TO_TESTS_TOOLS = [
   "ado.testplan_test_suite_write",
   "ado.testplan_test_case_write",
   "ado.wit_work_item_comment_write",
+  "aqa.run_summary",
   "fs.read_file",
   "fs.list_dir",
   "fs.write_file",
@@ -75,7 +76,9 @@ A verifier reads the run ledger and checks, from what actually happened:
   1. work item ${workItem} was read;
   2. a Playwright spec file exists in the workspace;
   3. the suite was run and came back green — zero failures AND zero skipped;
-  4. at least one test case exists in Azure DevOps;
+  4. at least one test case is linked to the story — created now OR already
+     there from an earlier run — at one case per acceptance criterion;
+  4b. if you created any, you read the existing ones first;
   5. every created case carries testsWorkItemId = ${workItem};${
     canCreatePlans
       ? `
@@ -88,13 +91,25 @@ done, stop calling tools and the verifier will check. If it finds gaps you will
 be given them and one more attempt.
 
 METHOD
-1. Read the story first: ado.wit_work_item with action "get" and id ${workItem}.
-   Take the acceptance criteria from the work item's own fields. Never invent an
-   acceptance criterion, and never work from the request text alone — if the
-   story is unreadable, stop and report that rather than guessing.
-2. Write one Gherkin scenario per acceptance criterion into a .feature file with
-   fs.write_file. Keep the criterion's own wording; an AC that maps to several
-   cases becomes a Scenario Outline with an Examples table.
+1. Read the story first: ado.wit_work_item with action "get", id ${workItem}, and
+   expand "Relations". The relations tell you which test cases ALREADY exist for
+   this story — this run may not be the first. Take the acceptance criteria from
+   the work item's own fields. Never invent an acceptance criterion, and never
+   work from the request text alone — if the story is unreadable, stop and
+   report that rather than guessing.
+   If the story has "tested by" relations, read those cases with
+   ado.wit_work_item action "get_batch" and their ids before you write anything,
+   so you know what is already covered.
+2. Write the scenarios into a .feature file with fs.write_file, keeping each
+   criterion's own wording. A criterion usually needs one scenario, but write as
+   many as it takes to cover it — an AC that lists several conditions becomes
+   several scenarios, or a Scenario Outline with an Examples table. Name each
+   scenario for the criterion it comes from — "AC-3" when the criterion needs
+   one, "AC-3a", "AC-3b", "AC-3c" when it needs several — and keep those names
+   as the test titles. The rule has to hold in both directions: strip a letter
+   suffix from any test name and you have the criterion, and so the test case,
+   it belongs to. Tests are per behaviour, test cases are per criterion, and
+   those two counts are allowed to differ.
 3. Generate the spec with bdd2pw.to_spec. What it writes is a SKELETON: every
    test is marked fixme and every step is a TODO, which Playwright reports as
    skipped. A skeleton is not done.
@@ -125,9 +140,29 @@ METHOD
 5. Run the suite with pw.run_tests. Fix what fails and run again. "green" is
    false while anything is skipped, so an unimplemented test blocks the run just
    as a failing one does.
-6. Only once the suite is green, record the cases: ado.testplan_test_case_write
-   with action "create", one call per test, passing title, steps, and
-   testsWorkItemId = ${workItem}.${canCreatePlans ? " Then put them in a suite." : ""}
+6. Only once the suite is green, record the cases.
+
+   THE GRAIN IS ONE CASE PER ACCEPTANCE CRITERION — exactly one, whatever
+   number of tests that criterion needed. A criterion covered by two tests is
+   still ONE case; put both tests' steps in it and say which test covers which
+   part. Never create a case per test. A story with four criteria has four
+   cases on every run, so that anyone asking "is this requirement tested?" gets
+   the same answer each time. (Observed: the same story produced five cases on
+   one run and four on the next, because this was not stated.)
+
+   Record only the ones that are MISSING. Compare each acceptance criterion
+   against the cases you read in step 1:
+     - already covered, steps still accurate → leave it alone, create nothing;
+     - already covered, steps now wrong → ado.testplan_test_case_write with
+       action "update_steps" and that case's id;
+     - not covered → ado.testplan_test_case_write with action "create", passing
+       title, steps, and testsWorkItemId = ${workItem}.
+   Titles are not a reliable key: the same criterion gets worded differently
+   each run, so match on what the criterion MEANS, not on the text. A run that
+   creates nothing because everything is already covered is a successful run —
+   say so and stop. Creating a second case for a criterion that already has one
+   is worse than doing nothing, because a human then has to work out which of
+   the two is current.${canCreatePlans ? " Then put them in a suite." : ""}
    ${
      !canCreatePlans
        ? `This Azure DevOps account has no Test Plans access level, so test plans
@@ -147,8 +182,15 @@ METHOD
    list is empty, stop and report that no test plan is in scope — creating one
    is not something you may choose unilaterally.`
    }
-7. Optionally close the loop for the humans: ado.wit_work_item_comment_write with
-   action "add" and a short summary of what was created and the run result.
+7. Close the loop for the humans. Call aqa.run_summary — it counts the suite
+   result, the cases created or already linked, and anything this environment
+   could not do, from the run ledger. Post its "text" verbatim with
+   ado.wit_work_item_comment_write, action "add", workItemId ${workItem}.
+   Do not rewrite those figures or restate them in your own words: they are
+   counted from what happened, yours would be from memory, and a reader finding
+   the two disagree would be right to trust neither. You may add a sentence of
+   your own judgement around the block — what you chose not to cover, what
+   looked fragile — as long as it is clearly yours.
 
 CALLING CONVENTION
 Most Azure DevOps tools multiplex several operations behind one name and take an

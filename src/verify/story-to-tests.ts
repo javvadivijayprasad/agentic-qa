@@ -8,6 +8,7 @@ import {
   numberField,
   refusals,
   successful,
+  testedByIds,
   type CallRecord,
 } from "./evidence.js";
 
@@ -40,11 +41,17 @@ export interface StoryToTestsOptions {
  * a question about something that was observed to happen:
  *
  *   1. the story was actually read          (a successful wit_work_item get)
- *   2. a spec file exists on disk           (artefact recorded AND present)
+ *   2. a spec file exists on disk           (named by the run AND present)
  *   3. the suite ran, and came back green   (pw.run_tests, green === true)
- *   4. test cases exist in Azure DevOps     (successful testplan_test_case_write create)
+ *   4. cases are linked to the story        (created now, or already tested-by)
+ *  4b. it looked before it created          (a story read expanded to Relations)
  *   5. each case is traceable to the story  (testsWorkItemId === the work item)
  *   6. the cases are in a suite             (successful testplan_test_suite_write)
+ *
+ * Checks 2 and 4 ask whether something EXISTS, not whether this run produced
+ * it. The difference matters on a re-run: a story whose tests are already
+ * written and still correct should verify as done without the agent rewriting
+ * the spec or filing a second set of cases.
  *
  * A missing check produces a `Gap` whose `evidence` records what the verifier
  * did see, so the next cycle — and the ledger reader afterwards — can tell the
@@ -85,13 +92,20 @@ export class StoryToTestsVerifier implements Verifier {
     }
 
     // 2. a spec file exists -------------------------------------------------
-    const specs = artefacts(calls).filter(isSpecPath);
+    // EXISTS, not "was written this run". A run that finds a correct spec
+    // already in the workspace and simply runs it has done the right thing;
+    // the earlier version of this check forced it to rewrite the file to
+    // satisfy the verifier, which is the verifier demanding work rather than
+    // checking state (observed in run 20260914T034436Z-a69f71a5).
+    const specs = [
+      ...new Set([...artefacts(calls).filter(isSpecPath), ...specPathsTouched(calls)]),
+    ];
     const present = specs.filter((p) => fileExists(input.workspaceDir, p));
     if (present.length === 0) {
       gaps.push(
-        gap("no-spec-written", "no Playwright spec file was written into the workspace", {
+        gap("no-spec-written", "no Playwright spec file exists in the workspace", {
           artefactsRecorded: artefacts(calls),
-          specArtefacts: specs,
+          specPathsSeen: specs,
         }),
       );
     }
@@ -126,15 +140,47 @@ export class StoryToTestsVerifier implements Verifier {
     }
 
     // 4 + 5. test cases exist, and trace back to the story -------------------
+    // Cases the story ALREADY had count. Requiring creation every run is what
+    // produced four sets of duplicates in the sandbox: the agent had no reason
+    // to look first, and the verifier would have failed it if it had.
     const created = successful(calls, "ado.testplan_test_case_write", "create");
-    if (created.length < this.opts.minCases) {
+    const preexisting = reads.flatMap((r) => testedByIds(r.result));
+    const total = created.length + preexisting.length;
+    if (total < this.opts.minCases) {
       gaps.push(
         gap(
           "no-test-cases",
-          `${created.length} test case(s) were created in Azure DevOps; at least ${this.opts.minCases} is required`,
-          { created: created.length, attempted: attempts(calls, "ado.testplan_test_case_write") },
+          `${total} test case(s) are linked to work item ${this.opts.workItem} (${created.length} created this run, ${preexisting.length} already present); at least ${this.opts.minCases} is required`,
+          {
+            created: created.length,
+            preexisting,
+            attempted: attempts(calls, "ado.testplan_test_case_write"),
+          },
         ),
       );
+    }
+
+    // 4b. it looked before it wrote ------------------------------------------
+    // The semantic match — "is this criterion already covered?" — is the
+    // model's judgement, because the create tool exposes no tag or automated
+    // test name to key on and the titles are reworded every run. What code CAN
+    // insist on is that the agent read the existing cases before adding more.
+    if (created.length > 0) {
+      const looked = reads.some(
+        (r) => typeof r.args["expand"] === "string" && /relations|all/i.test(r.args["expand"]),
+      );
+      if (!looked) {
+        gaps.push(
+          gap(
+            "created-without-looking",
+            "test cases were created without first reading the cases already linked to the story, so duplicates cannot be ruled out",
+            {
+              created: created.length,
+              storyReads: reads.map((r) => r.args["expand"] ?? "(no expand)"),
+            },
+          ),
+        );
+      }
     }
     const untraceable = created.filter(
       (c) => !sameId(c.args["testsWorkItemId"], this.opts.workItem),
@@ -211,6 +257,21 @@ function sameId(value: unknown, want: string): boolean {
 
 function isSpecPath(p: string): boolean {
   return /\.(spec|test)\.(ts|js|mts|cts|tsx)$/i.test(p);
+}
+
+/**
+ * Spec paths the run named in a workspace call — written, read, or generated.
+ * Catches the spec that was already there and only read, which an artefact
+ * list by definition never records.
+ */
+function specPathsTouched(calls: CallRecord[]): string[] {
+  const out: string[] = [];
+  for (const c of calls) {
+    if (!c.ok || c.server !== "fs") continue;
+    const p = c.args["path"];
+    if (typeof p === "string" && isSpecPath(p)) out.push(p);
+  }
+  return out;
 }
 
 function fileExists(workspaceDir: string, rel: string): boolean {

@@ -259,3 +259,72 @@ failing run is what diagnosed it; the run ids are cited so the evidence can be r
 - **Added an end-to-end test** that runs the real loop and hands its ledger to the real verifier.
   Every other fixture in the suite encodes an assumption about the event shape; this one encodes
   none, and is the test that would have caught this.
+
+### Changed (A8d — the verifier checks state, not effort)
+
+Three findings from the first `done` run (`20260914T034436Z-a69f71a5`), all the same mistake wearing
+different clothes: a check that asks "did this run DO the thing" rather than "is the thing TRUE".
+
+- **Check 2 accepts a spec that already exists.** It required an artefact recorded in this run's
+  ledger, so a run that found a correct spec in the workspace and simply executed it was told "no
+  spec written" and had to rewrite the file to pass. It now counts any spec path the run named —
+  written, generated or merely read — that is present on disk. A path named but absent is still a
+  gap.
+- **Check 4 counts cases the story already had.** It required creation, which is precisely why three
+  consecutive runs each filed a fresh set of test cases against AB#1. It now counts cases created
+  this run plus those already linked by a `Microsoft.VSTS.Common.TestedBy` relation.
+- **New check 4b: it looked before it wrote.** Whether a criterion is already covered is a semantic
+  judgement — the create tool exposes no tag and no automated-test-name field to key on, and the
+  model rewords every title between runs — so the model decides it and code insists only that the
+  existing cases were read first (`wit_work_item get` with `expand: "Relations"`). Creating without
+  looking is now a gap.
+- The skill reads the story with `expand: "Relations"`, reads any linked cases before writing, and
+  is told to create only what is missing, `update_steps` what is stale, and leave the rest alone —
+  with "a run that creates nothing is a successful run" stated, because the previous instructions
+  implied the opposite.
+
+### Fixed (A8d)
+
+- **Azure DevOps results are fenced text, not objects.** Every ADO result reaches the ledger wrapped
+  in the untrusted-content fence that keeps the model from reading it as instruction; `asRecord` saw
+  a string and returned undefined, so `createdCaseIds` reported nothing on runs that had created
+  five cases. `unfence`/`payloadOf` now parse the body, and `testedByIds` reads a story's tested-by
+  links out of it.
+
+### Changed (A8d, continued — the grain of a test case is stated)
+
+- One test case per acceptance criterion, whatever number of Playwright tests that criterion
+  needs. AB#1 produced **five** cases on one run and **four** on the next, from the same four
+  criteria, because nothing said which unit a case represents: the agent split "empty fields show
+  validation messages" into two cases one time and kept it as one the next. A traceability link
+  whose granularity changes run to run is not a traceability link. The skill now fixes the case
+  grain at the criterion, fixes the test grain at the behaviour, and says explicitly that the two
+  counts may differ.
+
+### Added (A8e — the run reports itself from the ledger)
+
+- **`aqa.run_summary`** (`src/mcp/adapters/summary.ts`), a new in-process adapter classed `read`.
+  It counts the suite result, the cases created and the cases the story already had, the spec files
+  written, and anything the environment prevented — all from the ledger — and returns the markdown
+  to post. The skill now calls it and posts the text verbatim.
+
+  This closes the one place where the design's own rule did not hold. Everywhere else the model
+  proposes and code decides; the comment written back to the story was the model narrating its own
+  work — "5 passed", "no duplicates were introduced" — with nothing checking it. It was accurate
+  both times we looked. It was still a claim standing where evidence belongs, and it could drift
+  from `aqa replay` without anyone noticing. The agent may still add its own judgement around the
+  block, clearly marked as its own; it no longer restates the figures, because it no longer has to.
+
+- **The test naming convention is stated**: a test is named for the criterion it covers, suffixed
+  `a`, `b`, `c` when a criterion needs several (`AC-3a`, `AC-3b`); the case keeps the bare id. The
+  model invented this convention on one run and might not have repeated it. It has to hold in both
+  directions, because stripping the suffix off a failing JUnit test name is how the regression
+  pipeline will map a failure back to a requirement.
+
+### Changed (A8e)
+
+- **The Playwright JSON report is kept**, written to `.aqa-report/playwright.json` in the workspace
+  and recorded as an artefact. The reporter writes to stdout, which was parsed into a flat summary
+  and then discarded — so per-test durations, retries and error stacks, exactly what failure triage
+  needs, were never persisted at all. Best-effort: a workspace that cannot be written still returns
+  a usable summary.

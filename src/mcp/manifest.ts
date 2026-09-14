@@ -53,6 +53,11 @@ export const DEFAULT_MANIFEST: Manifest = {
   "pw.list_tests": { policyClass: "read" },
   "pw.run_tests": { policyClass: "write_workspace" },
 
+  // ---------------------------------------------------------------- aqa (in-process)
+  // The run's own report, counted from the ledger. Reads the ledger; writes
+  // nothing anywhere.
+  "aqa.run_summary": { policyClass: "read" },
+
   // ---------------------------------------------------------------- tcg (in-process)
   "tcg.generate_cases": { policyClass: "read" },
 

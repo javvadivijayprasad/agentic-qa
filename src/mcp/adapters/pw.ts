@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ToolClient, ToolDescriptor, ToolResult } from "../../runtime/tools.js";
 import { FsTools } from "./fs.js";
 import { execFileRunner, type CommandRunner } from "./process.js";
@@ -130,6 +130,22 @@ export class PwTools implements ToolClient {
       return fail(
         `Playwright produced no JSON report (exit ${r.code}). ${tail(r.stderr || r.stdout)}`,
       );
+    }
+    // Keep the full report, not just the summary. Per-test durations, retries
+    // and error stacks are what a failure triage needs, they cannot be
+    // reconstructed after the fact, and the flat summary deliberately throws
+    // them away to keep the model's context small. When the reporter wrote to
+    // stdout — which is the usual case — nothing had been persisting them at
+    // all. Writing it as an artefact costs one file and makes the run's raw
+    // evidence as durable as its conclusions.
+    if (!existsSync(reportAbs) && raw) {
+      try {
+        mkdirSync(dirname(reportAbs), { recursive: true });
+        writeFileSync(reportAbs, raw, "utf8");
+      } catch {
+        // A workspace we cannot write to still has a usable summary; the
+        // report is evidence we would like, not evidence we require.
+      }
     }
     return {
       ok: true,
