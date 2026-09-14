@@ -24,6 +24,11 @@ date-released: "2026-09-14"
 license: MIT
 repository-code: "https://github.com/javvadivijayprasad/agentic-qa"
 url: "https://github.com/javvadivijayprasad/agentic-qa#readme"
+doi: 10.5281/zenodo.22758876
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22758876
+    description: "Archived release v0.1.0 (Zenodo)"
 keywords:
   - agentic AI
   - software testing
