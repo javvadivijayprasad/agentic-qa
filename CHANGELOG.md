@@ -4,13 +4,37 @@ All notable changes to this project will be documented in this file. Format: Kee
 versioning: SemVer. Any change to the contract (PLAN §0: CLI flags, exit codes, env vars,
 config schema, ledger event shapes, approval file mode, artefact paths) is a MAJOR bump.
 
-## [0.1.0] — 2026-09-14
+## [0.1.2] — 2026-09-15
 
-First public release. One skill — `story-to-tests` — working end to end against a live Azure DevOps
-project and a real application, with the governance gate, ledger, replay and verifier behind it.
+### Fixed
 
-Packaging: `publishConfig.access: public` stated explicitly, documentation shipped in the tarball,
-and `prepublishOnly` now runs lint as well as typecheck, tests and build.
+- **Documentation claimed the ledger was scrubbed of secrets. It is not, by design.** Five places
+  across four documents said credentials were "redacted on the way in" and that a ledger could be
+  shared without review. `scrub()` is applied to model input and to stderr, and deliberately **not**
+  to ledger observations — tool results are stored verbatim because redacted evidence is not
+  evidence, a decision the code has always carried in a comment. The docs now state the real
+  position: no prompt text, no PAT, but whatever the tools returned. Found by auditing
+  `ARCHITECTURE.md` against the source rather than against memory.
+
+### Added
+
+- `ARCHITECTURE.md` §8b — why tools arrive over MCP at all, why both servers are pinned, why the
+  Azure DevOps server forced per-action classification, why the browser server is deliberately
+  half-used, and why six adapters are in-process.
+- A statement of what the `bdd2pw`, `synthdata` and `tcg` adapters actually are. They carry the
+  names of separate projects of the author's and none is a dependency: `bdd2pw` is reimplemented
+  here, `synthdata` is invoked as a subprocess, `tcg` is a remote service. Enabling `tcg` sends the
+  story and its acceptance criteria to `TCG_URL`, which is a data-egress decision and is now named
+  as one in `ADOPTION.md`.
+- `FUNCTIONAL.md` — "What provides each capability": both MCP servers with their pinned versions and
+  all six adapters with their real tool names.
+- README — "What it is built on", so the runtime's actual composition is visible without opening
+  `TECHNICAL.md`.
+- A VS Code extension under `extension/`, versioned and released separately. It answers approvals
+  through the existing `--approval file` contract and renders the ledger as a browsable tree. Not
+  part of this package: `files` is an allow-list and does not include it.
+
+## [0.1.1] — 2026-09-14
 
 ### Fixed (found by the pre-publish tarball check)
 
@@ -20,16 +44,22 @@ and `prepublishOnly` now runs lint as well as typecheck, tests and build.
   should have caught this matched `/0\.1\.0/`, which `0.1.0-dev.0` satisfies — a substring assertion
   on a version number is not an assertion. Found by installing the tarball into a clean directory,
   which is the only step that exercises the package as a user receives it.
-- **Documentation claimed the ledger was scrubbed of secrets. It is not, by design.** Five places
-  across four documents said credentials were "redacted on the way in" and that a ledger could be
-  shared without review. `scrub()` is applied to model input and to stderr, and deliberately **not**
-  to ledger observations — tool results are stored verbatim because redacted evidence is not
-  evidence, a decision the code has always carried in a comment. The docs now state the real
-  position: no prompt text, no PAT, but whatever the tools returned. Found by auditing
-  `ARCHITECTURE.md` against the source rather than against memory.
 - The `files` allow-list shipped `docs/` wholesale, putting eleven internal `HANDOFF_*.md` notes and
   a 272 kB observed-tool dump into the tarball — more than half its size. The seven user-facing docs
   are now listed individually, so a working note added to `docs/` cannot silently join a release.
+
+### Added
+
+- `docs/ADOPTION.md` — what a team has to change before this is useful, who does it, and in what
+  order.
+
+## [0.1.0] — 2026-09-14
+
+First public release. One skill — `story-to-tests` — working end to end against a live Azure DevOps
+project and a real application, with the governance gate, ledger, replay and verifier behind it.
+
+Packaging: `publishConfig.access: public` stated explicitly, documentation shipped in the tarball,
+and `prepublishOnly` now runs lint as well as typecheck, tests and build.
 
 Everything below is the development history that produced it.
 
