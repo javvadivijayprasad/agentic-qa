@@ -1,6 +1,6 @@
 {
   "name": "@vijaypjavvadi/agentic-qa",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Standalone agentic QA runtime: a model chooses tools over MCP inside a governance gate; every step is written to a replayable ledger.",
   "license": "MIT",
   "author": "Vijay P. Javvadi <jvijayprasad@gmail.com>",
