@@ -1,0 +1,133 @@
+{
+  "name": "agentic-qa-vscode",
+  "displayName": "Agentic QA",
+  "description": "Run the agentic-qa runtime from VS Code: approve its writes in the editor, and read the run ledger it leaves behind.",
+  "version": "0.1.0",
+  "publisher": "vijaypjavvadi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/javvadivijayprasad/agentic-qa.git",
+    "directory": "extension"
+  },
+  "homepage": "https://github.com/javvadivijayprasad/agentic-qa#readme",
+  "bugs": {
+    "url": "https://github.com/javvadivijayprasad/agentic-qa/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Testing", "Other"],
+  "keywords": ["agentic", "qa", "playwright", "azure devops", "governance"],
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#0F1720",
+    "theme": "dark"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": ["workspaceContains:ai-quality.config.yaml", "workspaceContains:.aqa"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "aqa.runStory",
+        "title": "Run story for work item…",
+        "category": "Agentic QA"
+      },
+      {
+        "command": "aqa.dryRun",
+        "title": "Dry run (show what would be allowed)",
+        "category": "Agentic QA"
+      },
+      {
+        "command": "aqa.replayRun",
+        "title": "Replay a run as Markdown",
+        "category": "Agentic QA"
+      },
+      {
+        "command": "aqa.refreshRuns",
+        "title": "Refresh runs",
+        "category": "Agentic QA",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "aqa.openPendingApproval",
+        "title": "Answer the pending approval",
+        "category": "Agentic QA"
+      },
+      {
+        "command": "aqa.showRuntimeVersion",
+        "title": "Show runtime version",
+        "category": "Agentic QA"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aqa",
+          "title": "Agentic QA",
+          "icon": "resources/aqa.svg"
+        }
+      ]
+    },
+    "views": {
+      "aqa": [
+        {
+          "id": "aqa.runs",
+          "name": "Runs",
+          "contextualTitle": "Agentic QA runs"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "aqa.refreshRuns",
+          "when": "view == aqa.runs",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Agentic QA",
+      "properties": {
+        "aqa.executablePath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to the `aqa` executable. Leave empty to look on `PATH` and in the workspace's `node_modules/.bin`."
+        },
+        "aqa.configFile": {
+          "type": "string",
+          "default": "ai-quality.config.yaml",
+          "description": "Path to the policy config, relative to the workspace folder."
+        },
+        "aqa.workspaceDir": {
+          "type": "string",
+          "default": "qa",
+          "description": "Folder the agent may write to, relative to the workspace folder."
+        },
+        "aqa.ledgerDir": {
+          "type": "string",
+          "default": ".aqa",
+          "description": "Ledger root, relative to the workspace folder. Runs live in <ledgerDir>/runs/<runId>/."
+        },
+        "aqa.approvalTimeoutSeconds": {
+          "type": "number",
+          "default": 1800,
+          "minimum": 1,
+          "markdownDescription": "Seconds the run waits for an approval before treating silence as **denied**."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -p ./ --watch",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.5.0"
+  }
+}

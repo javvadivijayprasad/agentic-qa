@@ -151,8 +151,11 @@ to a specific event.
 
 Two properties make this more than a log file:
 
-**It is safe to share.** Prompt text is never stored — only section hashes and token counts. Secrets
-are redacted on the way in. You can attach a ledger to a ticket without reviewing it first.
+**It is safe to archive.** Prompt text is never stored — only section hashes and token counts — and
+the Azure DevOps token never enters it. Tool results, though, are kept _verbatim_, because they are
+the evidence: a redacted result would no longer show what the tool returned. So a ledger holds
+whatever your systems returned that day — work items, page snapshots, test output. Attach it to a
+ticket freely; read it before publishing one outside the organisation.
 
 **It records what was _not_ checked.** If the environment prevented a check — no Test Plans licence,
 say — that is recorded as a limitation rather than quietly dropped. A green run with a limitation is
@@ -223,6 +226,60 @@ the cost is not the deciding factor in either direction. The deciding factor is 
 the output, which is what the ledger and the verifier exist to answer.
 
 ---
+
+## What provides each capability
+
+The runtime itself does no work. It decides. Every capability above arrives through a tool, and every
+tool comes from one of three places — which matters to you because the three fail differently and
+are trusted differently.
+
+**Two external MCP servers**, spawned as child processes and pinned to an exact version:
+
+| server                     | version | supplies                                                         |
+| -------------------------- | ------- | ---------------------------------------------------------------- |
+| `@azure-devops/mcp`        | 2.10.0  | reading work items and their relations; creating test cases; comments |
+| `@playwright/mcp`          | 0.0.80  | a live browser for exploration — navigate, snapshot, find, screenshot, console |
+
+These are other people's code, run against your real systems, so they are the ones under the tightest
+constraint. The Azure DevOps server multiplexes many operations behind a single tool name and an
+`action` argument, so it is classified **per action**: `wit_get_work_item#get` is a read,
+`testplan_test_case_write#create` is a record write, and an action nobody classified is refused like
+an unknown tool. The Playwright server exposes click, type, fill and press — and those are simply
+never classified, which is how "look, don't touch" is enforced rather than merely intended.
+
+Both are pinned. An MCP server that changes its tool surface underneath you silently changes what
+your policy table means, so `AQA_ADO_MCP_VERSION` and `AQA_PLAYWRIGHT_MCP_VERSION` override the pins
+deliberately rather than by drift.
+
+**Six in-process adapters**, which are this project's own code presenting a tool interface:
+
+| adapter     | tools                              | does                                                             |
+| ----------- | ---------------------------------- | ----------------------------------------------------------------- |
+| `fs`        | `read_file`, `write_file`, `list_dir` | workspace file access; a path resolving outside the workspace is refused here, before the gate sees it |
+| `bdd2pw`    | `parse`, `to_spec`                 | Gherkin feature → Playwright spec scaffold                        |
+| `pw`        | `run_tests`, `list_tests`          | runs the suite and keeps the JSON report as an artefact           |
+| `tcg`       | `generate_cases`                   | test-case generation service (opt-in; needs `TCG_URL`)            |
+| `synthdata` | `generate`                         | synthetic test data (opt-in; needs `SYNTHDATA_CMD`)               |
+| `summary`   | `run_summary`                      | renders the run report **from the ledger**, so the figures the agent posts are counted rather than recalled |
+
+Running a Playwright *test suite* is not an MCP operation — the Playwright MCP server drives a
+browser, it does not run your suite. That is the `pw` adapter, shelling out to your own
+`playwright.config.ts`. The distinction matters: the agent explores with the server and tests with
+the adapter, and only the second one touches your application in anger.
+
+`tcg` and `synthdata` are site-specific and off by default. `--servers` selects what loads.
+
+**A note on three of those names.** `bdd2pw`, `synthdata` and `tcg` are named after separate projects
+of the author's, and none of them is a dependency: `bdd2pw` is reimplemented here in 240 lines,
+`synthdata` is invoked as a subprocess through `SYNTHDATA_CMD`, and `tcg` is a remote service called
+at `TCG_URL`. Enabling `tcg` sends the story text and its acceptance criteria to that service — it is
+classed `read` because it changes nothing, which is not the same as sending nothing.
+
+**The model**, reached through `@anthropic-ai/sdk`. It proposes; it executes nothing.
+
+The dependency list is deliberately short — the SDK, the MCP SDK, and a YAML parser. Everything else
+is Node's standard library. A runtime whose job is to be auditable should not itself be a supply
+chain.
 
 ## Where it fits
 

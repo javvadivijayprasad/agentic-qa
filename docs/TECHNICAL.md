@@ -46,7 +46,8 @@ src/
     clock.ts          Clock, SteppingClock
   governance/
     policy.ts         Gate, TableGate, ScopedGate — the resolution order below
-    scrub.ts          secret redaction on the way to the model and to the ledger
+    scrub.ts          secret redaction — to the model and to stderr, never to ledger
+                      observations (evidence is kept verbatim)
   mcp/
     client.ts         McpToolClient (stdio), ServerSpec, CompositeTools
     manifest.ts       DEFAULT_MANIFEST — the governance classification table

@@ -287,5 +287,9 @@ a decision worth making deliberately rather than by default.
 **Do not set `AQA_SANDBOX=1`.** It relaxes URL scope to allow `*`. It exists for local
 experimentation.
 
-Archive `<ledger>/runs/<runId>/` as a build artefact. It is the evidence, it contains no secrets,
-and it is the only way to understand a failed run after the fact.
+Archive `<ledger>/runs/<runId>/` as a build artefact. It is the only way to understand a failed run
+after the fact.
+
+It holds no prompt text and no Azure DevOps token, but tool results are stored verbatim because they
+are the evidence — so it contains whatever your systems returned during the run. Archive it
+internally without hesitation; read it before publishing one outside the organisation.

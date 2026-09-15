@@ -81,12 +81,25 @@ crack in "the ledger is the only source of truth". It is a deliberate, bounded o
 
 ### What the ledger does not contain
 
-`context` events record section hashes and token counts, never prompt text. Secrets are scrubbed on
-the way to the model and on the way to the ledger. The Azure DevOps token is passed through a child
-process environment, never on a command line, where it would appear in a process listing.
+`context` events record section hashes and token counts, **never prompt text**. The Azure DevOps
+token is passed through a child process environment, never on a command line where a process listing
+would show it. `scrub()` redacts known secret shapes — API keys, bearer tokens, credentials embedded
+in URLs — from everything sent to the model and everything written to stderr.
 
-The result is a file you can attach to a ticket, hand to an auditor, or check into a repository
-without a second thought. That property is worth more than the convenience of storing the prompts.
+**It is deliberately _not_ applied to ledger observations.** Tool results are stored verbatim,
+because they are the evidence. A redaction pass over them would mean the record no longer shows what
+the tool actually returned, and a verifier reading a redacted result is checking a claim about a
+claim. Evidence that has been edited for safety is not evidence.
+
+The practical consequence, and it belongs here rather than in a footnote: **a ledger contains
+whatever the tools returned.** In this skill's shape that is work-item fields, page snapshots and
+test output, and the credentials in `.env` never enter it — they are read by `playwright.config.ts`
+inside the suite, never passed as tool arguments. But that is a property of what these tools return,
+not a guarantee the runtime enforces. A tool that returned a secret would put it in the file.
+
+So: a ledger is safe to archive internally and is the right thing to attach to a ticket. Before
+publishing one outside the organisation, read it — the same way you would read any file containing
+whatever your systems happened to return that day.
 
 ---
 
@@ -229,6 +242,87 @@ because a reviewer clicking through four prompts is not reviewing.
 In terminal mode the default is No — an empty answer, a closed stdin, a piped run, all deny. In file
 mode, silence past a timeout becomes `denied by: "timeout"`, so an unattended run cannot sit forever
 holding a browser and two MCP servers open.
+
+---
+
+## 8b. Why MCP, and why half the tools are not
+
+Tools arrive over the Model Context Protocol, from two external servers — `@azure-devops/mcp` and
+`@playwright/mcp` — and six adapters written here. That split is a decision, not an accident of what
+happened to exist.
+
+**Why a protocol at all.** The gate can only classify what it can enumerate. MCP gives a server that
+declares its tools before any of them are called, which means the manifest can be checked against
+reality at startup and `aqa discover` can print the entire reachable surface without spending a
+model call. A bespoke integration per system would work, but nobody would be able to answer "what
+could this agent have done?" without reading the source.
+
+**Why pin the versions.** `PINNED_VERSIONS` fixes both servers exactly. A server that adds a tool in
+a patch release silently widens what the agent can reach, and a server that renames one silently
+narrows it — in both cases the policy table still looks correct while meaning something different.
+Pinning turns that into a visible upgrade with a diff. The env overrides exist so the upgrade is
+deliberate.
+
+**Why the Azure DevOps server forced per-action classification.** It presents a handful of tool names
+that each multiplex many operations behind an `action` argument, so `tool → class` is not a fine
+enough grain: the same name covers reading a work item and creating one. `operationKey()` is
+therefore tool + action, and an unlisted action is refused exactly like an unknown tool. A
+coarser grain here would have meant either refusing useful reads or permitting unexamined writes.
+
+**Why the browser server is deliberately half-used.** `@playwright/mcp` exposes click, type, fill and
+press alongside navigate and snapshot. Rather than classify those as something restrictive, they are
+not classified at all — so the refusal comes from the default-deny rule that already exists, and
+there is no policy line anyone can relax in a hurry. The capability the agent needs from a live
+browser is *seeing the DOM to find real selectors*. Everything beyond that belongs to the test suite,
+which is reviewable code, rather than to an agent improvising against production-shaped data.
+
+**Why six adapters are in-process.** Three reasons, and they are different:
+
+- `fs` is in-process because workspace confinement must not be a policy decision. A path resolving
+  outside the workspace is refused in the adapter, before the gate is consulted — two independent
+  mechanisms, so a policy misconfiguration alone cannot produce a write to `C:\`.
+- `summary` is in-process because it reads the ledger. The run report is *counted* from recorded
+  events rather than narrated by the model, and the component doing the counting has to be one that
+  cannot be talked out of it.
+- `pw` is in-process because running a test suite is not a browser operation. The Playwright MCP
+  server drives a browser; your suite is `npx playwright test` against your own config. Conflating
+  the two is how an agent ends up "testing" by clicking around and reporting success.
+
+`tcg` and `synthdata` are site-specific — they need a service URL and a local command — so they load
+only when asked for. A tool that is not loaded cannot be proposed, which is a cheaper safety property
+than a tool that is loaded and refused.
+
+### Relationship to the author's other projects
+
+Three adapters carry the names of separate projects of mine, and the relationship is different in
+each case. Stating it plainly, because the names imply a dependency that does not exist:
+
+| adapter     | named after            | actual relationship                                                                 |
+| ----------- | ---------------------- | ------------------------------------------------------------------------------------ |
+| `bdd2pw`    | the bdd2pw project     | **Reimplemented.** 240 lines here, written against `node:fs`. No shared code.        |
+| `synthdata` | the SynthData generator | **Invoked as a subprocess** via `SYNTHDATA_CMD`. Not linked, not vendored.            |
+| `tcg`       | a test-case generator service | **Called over HTTP** at `TCG_URL`. A remote service, not a library.           |
+
+`agentic-qa` has three runtime dependencies — `@anthropic-ai/sdk`, `@modelcontextprotocol/sdk`,
+`yaml` — and none of them are mine. The `sel2pw` project is not used here at all.
+
+**Why `bdd2pw` is reimplemented rather than depended upon.** The Gherkin subset this skill needs is
+small — a feature, scenarios, tags, steps — and the scaffold it emits is shaped by the spec layout
+this runtime expects rather than by a general translation. Taking the dependency would couple a
+governance runtime's release cycle to a translator's, for perhaps two hundred lines. The cost is
+real and worth naming: two implementations of the same idea can drift, and the one here is the one
+under test in this repository. If the translator's behaviour becomes the interesting part, the
+dependency is the better answer and this paragraph should be rewritten rather than defended.
+
+**`tcg` sends story text off-site.** It is classed `read` because it has no side effects on any
+system of record, which is true and also not the whole picture: the request body carries the story
+and its acceptance criteria to whatever `TCG_URL` names. A team enabling it is making a data-egress
+decision, and that belongs in the review that turns it on. It is off by default, as is `synthdata`.
+
+**The cost of this.** Two child processes per run, a startup handshake, and a dependency on two
+projects that version independently of this one. The alternative — calling the Azure DevOps REST API
+directly — would be faster and more stable, and was rejected because it would make the tool surface
+implicit again.
 
 ---
 

@@ -78,6 +78,7 @@ These have defaults, but they are yours to set — and the defaults are conserva
 | Are generated tests committed?        | your call                        | Committing them means PR review; not committing means they are disposable            |
 | Who pays for the API key?             | unset                            | One team key with a budget alert beats five personal keys                            |
 | Are ledgers kept?                     | written to `.aqa/`, git-ignored  | Archiving them gives you an audit trail; dropping them means failures are unreadable |
+| Do you enable the `tcg` adapter?      | no — it is off unless asked for  | It POSTs the story and its acceptance criteria to `TCG_URL`; that is a data-egress decision, not a tooling one |
 
 The one worth real discussion is **who approves**. The approval prompt is the point at which a human
 takes responsibility for what lands in your tracker. If that becomes a rubber stamp by whoever is
@@ -170,9 +171,11 @@ records who approved what, which makes it reviewable.
 **A budget alert on the API key.** A story costs about fifty cents. A misconfigured loop costs more.
 `budgets.steps` caps a single run; an alert catches the pattern.
 
-**Archive the ledgers of runs that mattered.** They contain no secrets — prompt text is never stored
-and credentials are redacted — so they can go in a build artefact or attached to a ticket. The first
-time you need to explain an agent's behaviour to someone who wasn't there, you will want it.
+**Archive the ledgers of runs that mattered.** The first time you need to explain an agent's
+behaviour to someone who wasn't there, you will want it. Prompt text is never stored and the PAT
+never enters the file — but tool results are kept verbatim, because that is what makes them
+evidence, so a ledger contains whatever your systems returned during the run. Treat it like any
+internal build artefact: archive it freely, and read one before it leaves the organisation.
 
 **Keep `destructive: refuse`.** If someone proposes relaxing it, ask which specific operation they
 need and classify that one instead.

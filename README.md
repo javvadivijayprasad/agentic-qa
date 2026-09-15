@@ -61,6 +61,33 @@ than from an open conversation with the model, which is what makes a run replaya
 renders any run with no network and no tool calls, and every number in the report traces to an
 event id.
 
+## What it is built on
+
+Tools reach the agent over the **Model Context Protocol**, from three places that are trusted
+differently:
+
+- **`@azure-devops/mcp`** (pinned 2.10.0) — work items, test cases, comments. It multiplexes many
+  operations behind one tool name and an `action` argument, so it is classified _per action_: an
+  action nobody classified is refused like an unknown tool.
+- **`@playwright/mcp`** (pinned 0.0.80) — a live browser, for finding real selectors. It also exposes
+  click, type, fill and press; those are never classified, which is how the exploration-only rule is
+  enforced rather than merely stated.
+- **Six in-process adapters** written for this runtime — `fs` (workspace-confined), `bdd2pw` (Gherkin
+  → spec), `pw` (runs your suite, keeps the report), `summary` (renders the run report from the
+  ledger), and `tcg` / `synthdata` (site-specific, opt-in). Three carry the names of the author's
+  separate projects but are not dependencies on them: `bdd2pw` is reimplemented here, `synthdata`
+  runs as a subprocess, `tcg` is a remote service — and enabling `tcg` sends story text to it.
+
+Running your Playwright suite is **not** an MCP call — the Playwright server drives a browser, the
+`pw` adapter runs your `playwright.config.ts`. The agent explores with the first and tests with the
+second.
+
+Three runtime dependencies: the Anthropic SDK, the MCP SDK, a YAML parser. Everything else is Node's
+standard library — a runtime whose job is auditability should not itself be a supply chain.
+
+Full inventory in [FUNCTIONAL.md](docs/FUNCTIONAL.md#what-provides-each-capability); wire formats and
+event shapes in [TECHNICAL.md](docs/TECHNICAL.md).
+
 ## Install
 
 Requires Node 18+.

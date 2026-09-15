@@ -1,6 +1,13 @@
 node_modules/
 dist/
 .aqa/
+
+# VS Code extension: compiled output and the packaged bundle. The .vsix is a
+# build artefact — it belongs on the Marketplace and on a GitHub release, not
+# in the history, where it would be a binary blob per version.
+extension/out/
+*.vsix
+
 .env
 .env.*
 !.env.example

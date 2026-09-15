@@ -20,6 +20,13 @@ and `prepublishOnly` now runs lint as well as typecheck, tests and build.
   should have caught this matched `/0\.1\.0/`, which `0.1.0-dev.0` satisfies — a substring assertion
   on a version number is not an assertion. Found by installing the tarball into a clean directory,
   which is the only step that exercises the package as a user receives it.
+- **Documentation claimed the ledger was scrubbed of secrets. It is not, by design.** Five places
+  across four documents said credentials were "redacted on the way in" and that a ledger could be
+  shared without review. `scrub()` is applied to model input and to stderr, and deliberately **not**
+  to ledger observations — tool results are stored verbatim because redacted evidence is not
+  evidence, a decision the code has always carried in a comment. The docs now state the real
+  position: no prompt text, no PAT, but whatever the tools returned. Found by auditing
+  `ARCHITECTURE.md` against the source rather than against memory.
 - The `files` allow-list shipped `docs/` wholesale, putting eleven internal `HANDOFF_*.md` notes and
   a 272 kB observed-tool dump into the tarball — more than half its size. The seven user-facing docs
   are now listed individually, so a working note added to `docs/` cannot silently join a release.
